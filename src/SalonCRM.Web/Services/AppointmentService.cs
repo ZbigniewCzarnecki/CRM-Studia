@@ -73,9 +73,11 @@ public class AppointmentService : IAppointmentService
             .Where(a => a.Id == id)
             .ExecuteUpdateAsync(s => s.SetProperty(a => a.Status, status), ct);
 
-    public Task<decimal> GetRevenueAsync(DateTime from, DateTime to, CancellationToken ct = default) =>
-        _db.Appointments
+    public async Task<decimal> GetRevenueAsync(DateTime from, DateTime to, CancellationToken ct = default)
+    {
+        var sum = await _db.Appointments
             .Where(a => a.Status == AppointmentStatus.Completed && a.Date >= from && a.Date <= to)
-            .SumAsync(a => (decimal?)a.TotalAmount, ct)
-            .ContinueWith(t => t.Result ?? 0m);
+            .SumAsync(a => (double?)a.TotalAmount, ct);
+        return (decimal)(sum ?? 0);
+    }
 }
