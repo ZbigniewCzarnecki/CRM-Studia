@@ -1,0 +1,81 @@
+== HISTORIA SESJI ==
+
+1. Stworzenie planu w chacie Claude za pomocą Opus 4.7
+2. Odpalenie Claude Code w folderze projektu (C:\Users\Ja\Desktop\Projekty\CRM)
+3. Instalacja RTK do ograniczenia zużycia tokenów
+4. Zainstalowanie skillów do fullstack (plugin fullstack-dev-skills)
+5. Uruchomienie komendy inicjującej analizę planu i wdrożenie projektu
+
+== CO ZOSTAŁO FAKTYCZNIE ZAIMPLEMENTOWANE ==
+
+--- Etap 1: Inicjalizacja projektu ---
+- git init
+- Utworzono solution: SalonCRM.slnx (.NET 10 SDK — nowy format .slnx zamiast .sln)
+- Utworzono 4 projekty (wszystkie net8.0):
+    src/SalonCRM.Models   — Class Library
+    src/SalonCRM.Server   — Console App
+    src/SalonCRM.Client   — Console App
+    tests/SalonCRM.Tests  — xUnit
+- Dodano referencje między projektami (Server→Models, Client→Models, Tests→Models+Server)
+- Wygenerowano .gitignore dla .NET
+
+--- Etap 2: Modele danych (src/SalonCRM.Models/) ---
+- Client.cs   — FirstName, LastName, PhoneNumber, Email; Equals po Email
+- Service.cs  — Name, Description, DurationMinutes, Price; Equals po Name
+- Appointment.cs — ClientName, ServiceName, Date, TotalAmount; Equals po ClientName+Date
+- Każda klasa: konstruktor parametryczny + bezparametrowy (dla JSON), ToString(), Equals(), GetHashCode()
+
+--- Etap 3: Serwer (src/SalonCRM.Server/) ---
+- DataStore.cs     — Dictionary<string, object> z 12 obiektami (4 Client, 4 Service, 4 Appointment)
+                     Polskie imiona i realistyczne usługi kosmetologiczne
+                     GetByClassName() — fallback na Service dla nieznanych klas
+- ClientHandler.cs — obsługa protokołu: CONNECT/GET/EXIT; serializacja JSON; Thread.Sleep(500-2000ms)
+- SalonServer.cs   — TcpListener na porcie 5000; MAX_CLIENTS=3; SemaphoreSlim(3,3); Thread per klient
+- Program.cs       — uruchomienie serwera
+
+--- Etap 4: Klient (src/SalonCRM.Client/) ---
+- SalonClient.cs  — TcpClient; CONNECT; pętla GET dla Client/Service/Appointment/Pet
+                    LINQ: filtrowanie klientów (nazwisko na K), sortowanie usług po cenie,
+                    liczenie nadchodzących wizyt
+                    [JsonRequired] na Pet.PetName → gwarantuje JsonException gdy serwer zwróci Service
+                    Aliasy using (ClientModel, ServiceModel) — rozwiązują kolizję namespace vs klasa
+- Program.cs      — uruchomienie klienta (opcjonalne ID jako argument)
+
+--- Etap 5: Testy (tests/SalonCRM.Tests/) ---
+Unit/ — 14 testów:
+  ClientModelTests.cs      — Equals, GetHashCode, ToString, konstruktor
+  ServiceModelTests.cs     — Equals, ToString z ceną i czasem
+  AppointmentModelTests.cs — Equals po ClientName+Date, ToString
+  DataStoreTests.cs        — 12 obiektów, GetByClassName, fallback, format kluczy
+
+Integration/ — 8 testów:
+  SerializationTests.cs    — serialize/deserialize Client/Service/Appointment; JsonException przy złym typie
+  CommunicationTests.cs    — parsing protokołu CONNECT/GET/DATA/EXIT
+
+E2E/ — 5 testów (prawdziwy serwer TCP na losowym porcie):
+  FullSystemTests.cs       — N klientów ≤ MAX_CLIENTS dostaje OK
+                             MAX_CLIENTS+1 klient dostaje REFUSED (deterministyczny — trzyma połączenia otwarte)
+                             Żądanie "Pet" → serwer zwraca Service → JsonException po stronie klienta
+                             Wszystkie typy danych zwracają 4 obiekty
+
+--- Wynik ---
+38/38 testów zielonych
+5 commitów w git
+
+== PROBLEMY NAPOTKANE I ROZWIĄZANIA ==
+
+1. Kolizja namespace: SalonCRM.Client (projekt) vs Client (klasa z Models)
+   → Rozwiązanie: aliasy "using ClientModel = SalonCRM.Models.Client" w SalonClient.cs
+   → Usunięto referencję do SalonCRM.Client z projektu testów (testy E2E używają raw TCP)
+
+2. Test ExceedMaxClients był niestabilny (race condition z random delay)
+   → Rozwiązanie: deterministyczny test — najpierw otwieramy MaxClients połączeń i trzymamy je aktywne,
+     potem próbujemy MaxClients+1, dopiero wtedy zamykamy
+
+3. Standardowy JsonSerializer.Deserialize nie rzuca wyjątku przy niezgodnych polach JSON
+   → Rozwiązanie: [JsonRequired] na pole Pet.PetName — gdy JSON zawiera obiekty Service (bez PetName),
+     deserializacja jako List<Pet> rzuca JsonException
+
+== DO UZUPEŁNIENIA PRZED ODDANIEM ==
+- README.md → skład zespołu
+- README.md → deklaracja użycia AI zgodna z wymaganiami prowadzącego
