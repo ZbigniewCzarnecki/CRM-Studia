@@ -9,7 +9,16 @@ public static class SeedData
         var userManager = services.GetRequiredService<UserManager<ApplicationUser>>();
         var roleManager = services.GetRequiredService<RoleManager<IdentityRole>>();
 
-        foreach (var role in new[] { "Admin", "Staff" })
+        // Migracja nazwy roli Staff → Pracownik
+        var staffRole = await roleManager.FindByNameAsync("Staff");
+        if (staffRole != null)
+        {
+            staffRole.Name = "Pracownik";
+            staffRole.NormalizedName = "PRACOWNIK";
+            await roleManager.UpdateAsync(staffRole);
+        }
+
+        foreach (var role in new[] { "Admin", "Pracownik" })
         {
             if (!await roleManager.RoleExistsAsync(role))
                 await roleManager.CreateAsync(new IdentityRole(role));

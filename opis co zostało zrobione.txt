@@ -78,11 +78,44 @@ Stos: Blazor Server .NET 8 + EF Core + SQLite + ASP.NET Core Identity
   Naprawa: ExecuteUpdateAsync we wszystkich UpdateAsync (brak konfliktów trackera)
   Naprawa: sidebar sticky zamiast fixed (usunięto margin-left: 240px)
 
-[web-v3] Drobne poprawki — commit (do zrobienia po tym commicie)
+[web-v3] Drobne poprawki — commit 00d92cd
   - Kwota wizyty: @bind-Value:after zamiast @bind-Value + @onchange; pre-fill w OnInitializedAsync
   - Szybka zmiana statusu: przyciski ✓ ✕ ? (visibility:hidden gdy nieaktywne — brak przesuwania layoutu)
   - Status "Zakończona" → kolor zielony (był szary)
   - SQLite decimal fix: GetRevenueAsync używa SumAsync<double?> zamiast <decimal?>
+
+[web-v4] Kalendarz / Import-Export / Ustawienia / Lojalność / Uprawnienia — commit (bieżący)
+  Migracja: SettingsLoyaltyPermissions (nowe tabele: SalonSettings, LoyaltyStamps, UserPermissions)
+  Naprawa kalendarza:
+  - Klikanie slotów: @onclick na każdy .cal-slot div (z lokalnym slotIndex) zamiast OnGridClick(MouseEventArgs)
+  - Formularz pre-filled z dokładną godziną i usługą z wiersza kalendarza
+  - CalendarView czyta WorkDayStart/WorkDayEnd z ISettingsService (nie stałe)
+  Import/Export klientów (ClientList.razor):
+  - Eksportuj CSV → plik klienci.csv przez JS downloadCsv (window.downloadCsv w app.js)
+  - Importuj CSV → InputFile, parsowanie linii, pomijanie duplikatów (match po Email)
+  - Przycisk "Profil" → nawigacja do /clients/{id}
+  Ustawienia salonu (Settings/SettingsPage.razor, /settings, tylko Admin):
+  - Nazwa, adres, telefon, godziny pracy, slot kalendarza, liczba pieczątek, waluta
+  - SalonSettings encja + ISettingsService + SettingsService (ExecuteUpdateAsync)
+  Karta lojalnościowa + profil klientki:
+  - Clients/ClientProfile.razor — route /clients/{Id:int}
+  - Statystyki: wizyty ogółem, zrealizowane, łączna kwota, ulubiona usługa
+  - Wizualna siatka pieczątek (kółka ⭐) z ustawionym limitem
+  - Przycisk "+ Pieczątka" (ręczna) + "Nowa karta" (reset)
+  - Auto-pieczątka przy zmianie statusu na Completed (AppointmentService.UpdateStatusAsync)
+  - ILoyaltyService + LoyaltyService (GetByClientAsync, AddStampAsync, ResetCardAsync)
+  Role PL + granularne uprawnienia per pracownik:
+  - Rola "Staff" → "Pracownik" (SeedData: FindByName + rename + normalized)
+  - UserPermissions encja (8 flag: CanManageAppointments, CanDeleteAppointments, CanEditClientData,
+    CanManageServices, CanViewReports, CanManageWorkers, CanManageSettings, CanManageLoyaltyCards)
+  - IPermissionService + PermissionService (Admin → zawsze true, Pracownik → sprawdza flagę)
+  - PermissionView.razor — komponent analogiczny do AuthorizeView, ale z granularnym uprawnieniem
+  - UserList.razor: panel uprawnień per Pracownik (checkboxy + Zapisz), inicjalizacja przy tworzeniu
+  - Dashboard (Home.razor): przychody w PermissionView (ViewReports)
+  - AppointmentList.razor: Usuń w PermissionView (DeleteAppointments)
+  - ClientList.razor: Edytuj/Usuń w PermissionView (EditClientData)
+  NavMenu: dodano link Ustawienia (Admin, ⚙️)
+  CSS: .loyalty-stamp, .loyalty-stamp-filled, .loyalty-stamp-empty
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 █ PROBLEMY I ROZWIĄZANIA
@@ -110,6 +143,12 @@ Web:
      → @if dodaje/usuwa z DOM → Rozwiązanie: visibility:hidden
   8. SQLite nie obsługuje decimal w SumAsync
      → Rozwiązanie: rzutuj na double? w zapytaniu, wynik z powrotem na decimal
+  9. Razor parser gubi się na zagnieżdżonych "\"" w interpolowanym stringu wewnątrz @code
+     → Objaw: <  traktowane jako tag HTML, błędy RZ9980 kilkanaście linii dalej
+     → Rozwiązanie: wyciągnąć wyrażenie z zagnieżdżonymi "" do osobnej zmiennej przed AppendLine
+ 10. OffsetX w kalendarzu pobierany ze zdarzenia klikniętego child-elementu (.cal-slot)
+     → Wynik: zły czas (zawsze 8:00 niezależnie od klikniętego slotu)
+     → Rozwiązanie: @onclick na każdy .cal-slot z przechwyconym lokalnym slotIndex (nie MouseEventArgs)
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 █ DO UZUPEŁNIENIA PRZED ODDANIEM ZALICZENIA
@@ -120,7 +159,7 @@ Web:
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 █ PLANOWANE FUNKCJE (kolejne iteracje)
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-  - [ ] Historia wizyt per klient (klik w klienta → lista jego wizyt)
+  - [x] Historia wizyt per klient → profil /clients/{id} z tabelą ostatnich 20 wizyt
   - [ ] Widok tygodniowy kalendarza
   - [ ] Deploy: Docker + docker-compose dla Proxmox
   - [ ] Cloudflare Tunnel (HTTPS bez otwierania portów)

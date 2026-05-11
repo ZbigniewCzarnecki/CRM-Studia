@@ -1,0 +1,240 @@
+@page "/clients/{Id:int}"
+@rendermode InteractiveServer
+@attribute [Microsoft.AspNetCore.Authorization.Authorize]
+@inject IClientService ClientService
+@inject IAppointmentService AppointmentService
+@inject ILoyaltyService LoyaltyService
+@inject ISettingsService SettingsService
+@inject NavigationManager Nav
+@inject AuthenticationStateProvider AuthStateProvider
+
+<PageTitle>Profil klientki — SalonCRM</PageTitle>
+
+@if (_loading)
+{
+    <div class="text-center py-4"><span class="spinner-border text-primary"></span></div>
+}
+else if (_client == null)
+{
+    <div class="empty-state">Klientka nie znaleziona. <a href="/clients">Wróć do listy</a></div>
+}
+else
+{
+    <div class="page-header">
+        <h1>@_client.FirstName @_client.LastName</h1>
+        <a href="/clients" class="btn btn-outline-secondary btn-sm">← Powrót</a>
+    </div>
+
+    <!-- Dane kontaktowe -->
+    <div class="row g-3 mb-4">
+        <div class="col-md-3">
+            <div class="stat-card">
+                <div class="stat-value">@_appointments.Count</div>
+                <div class="stat-label">Wizyty ogółem</div>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="stat-card stat-green">
+                <div class="stat-value">@_appointments.Count(a => a.Status == AppointmentStatus.Completed)</div>
+                <div class="stat-label">Zrealizowane</div>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="stat-card">
+                <div class="stat-value">@_totalSpent.ToString("C0", new System.Globalization.CultureInfo("pl-PL"))</div>
+                <div class="stat-label">Łączna kwota</div>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="stat-card">
+                <div class="stat-value">@(_favoriteService ?? "—")</div>
+                <div class="stat-label">Ulubiona usługa</div>
+            </div>
+        </div>
+    </div>
+
+    <div class="row g-3 mb-2 text-muted small">
+        <div class="col-auto">📞 @(string.IsNullOrWhiteSpace(_client.PhoneNumber) ? "—" : _client.PhoneNumber)</div>
+        <div class="col-auto">✉️ @_client.Email</div>
+        @if (!string.IsNullOrWhiteSpace(_client.Notes))
+        {
+            <div class="col-12">📝 @_client.Notes</div>
+        }
+    </div>
+
+    <!-- Karta lojalnościowa -->
+    <div class="card mb-4">
+        <div class="card-header d-flex justify-content-between align-items-center">
+            <strong>Karta lojalnościowa</strong>
+            <div>
+                <PermissionView Permission="Permission.ManageLoyaltyCards">
+                    <button class="btn btn-sm btn-outline-primary me-2" @onclick="() => _showStampForm = true">+ Pieczątka</button>
+                    <button class="btn btn-sm btn-outline-secondary" @onclick="ResetCard">Nowa karta</button>
+                </PermissionView>
+            </div>
+        </div>
+        <div class="card-body">
+            @if (_stampsTotal >= _settings.LoyaltyStampsForReward)
+            {
+                <div class="alert alert-success mb-3">🎉 Komplet pieczątek! Klientka zasługuje na nagrodę.</div>
+            }
+            <div class="loyalty-grid">
+                @for (int i = 0; i < _settings.LoyaltyStampsForReward; i++)
+                {
+                    var filled = i < _stampsTotal;
+                    <div class="loyalty-stamp @(filled ? "loyalty-stamp-filled" : "loyalty-stamp-empty")">
+                        @if (filled) { <span>⭐</span> }
+                        else { <span class="text-muted">○</span> }
+                    </div>
+                }
+            </div>
+            <div class="mt-2 text-muted small">@_stampsTotal / @_settings.LoyaltyStampsForReward pieczątek</div>
+
+            @if (_stamps.Any())
+            {
+                <div class="mt-3">
+                    <table class="table table-sm">
+                        <thead>
+                            <tr><th>Data</th><th>Typ</th><th>Notatka</th></tr>
+                        </thead>
+                        <tbody>
+                            @foreach (var stamp in _stamps.OrderByDescending(s => s.AwardedAt))
+                            {
+                                <tr>
+                                    <td>@stamp.AwardedAt.ToString("dd.MM.yyyy HH:mm")</td>
+                                    <td>@(stamp.IsManual ? "Ręczna" : "Auto")</td>
+                                    <td>@stamp.Note</td>
+                                </tr>
+                            }
+                        </tbody>
+                    </table>
+                </div>
+            }
+        </div>
+    </div>
+
+    <!-- Historia wizyt -->
+    <div class="card mb-4">
+        <div class="card-header"><strong>Historia wizyt</strong></div>
+        <div class="card-body p-0">
+            @if (!_appointments.Any())
+            {
+                <div class="p-3 text-muted">Brak wizyt.</div>
+            }
+            else
+            {
+                <table class="table table-hover mb-0">
+                    <thead>
+                        <tr>
+                            <th>Data</th>
+                            <th>Usługa</th>
+                            <th>Status</th>
+                            <th class="text-end">Kwota</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var a in _appointments.Take(20))
+                        {
+                            <tr>
+                                <td>@a.Date.ToString("dd.MM.yyyy HH:mm")</td>
+                                <td>@a.ServiceName</td>
+                                <td><span class="status-badge status-@a.Status.ToString().ToLower()">@StatusLabel(a.Status)</span></td>
+                                <td class="text-end">@a.TotalAmount.ToString("C", new System.Globalization.CultureInfo("pl-PL"))</td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            }
+        </div>
+    </div>
+}
+
+@if (_showStampForm)
+{
+    <div class="modal-backdrop">
+        <div class="modal-dialog-custom">
+            <div class="modal-header-custom">
+                <h5>Dodaj pieczątkę ręcznie</h5>
+                <button class="btn-close" @onclick="() => _showStampForm = false"></button>
+            </div>
+            <div class="modal-body-custom">
+                <label class="form-label">Notatka (opcjonalnie)</label>
+                <input class="form-control" @bind="_stampNote" placeholder="np. urodziny, akcja promocyjna..." />
+            </div>
+            <div class="modal-footer-custom">
+                <button class="btn btn-primary" @onclick="AddManualStamp">Dodaj pieczątkę</button>
+                <button class="btn btn-secondary ms-2" @onclick="() => _showStampForm = false">Anuluj</button>
+            </div>
+        </div>
+    </div>
+}
+
+@code {
+    [Parameter]
+    public int Id { get; set; }
+
+    private SalonCRM.Web.Data.Entities.ClientEntity? _client;
+    private SalonCRM.Web.Data.Entities.SalonSettings _settings = new();
+    private List<AppointmentEntity> _appointments = [];
+    private List<SalonCRM.Web.Data.Entities.LoyaltyStamp> _stamps = [];
+    private int _stampsTotal;
+    private decimal _totalSpent;
+    private string? _favoriteService;
+    private bool _loading = true;
+    private bool _showStampForm;
+    private string _stampNote = string.Empty;
+    private string _currentUserId = "";
+
+    protected override async Task OnInitializedAsync()
+    {
+        var authState = await AuthStateProvider.GetAuthenticationStateAsync();
+        _currentUserId = authState.User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value ?? "";
+
+        _client = await ClientService.GetByIdAsync(Id);
+        _settings = await SettingsService.GetAsync();
+
+        if (_client != null)
+        {
+            var fullName = $"{_client.FirstName} {_client.LastName}";
+            _appointments = await AppointmentService.GetByClientNameAsync(fullName);
+            _stamps = await LoyaltyService.GetByClientAsync(Id);
+            _stampsTotal = _stamps.Count;
+            _totalSpent = _appointments
+                .Where(a => a.Status == AppointmentStatus.Completed)
+                .Sum(a => a.TotalAmount);
+            _favoriteService = _appointments
+                .GroupBy(a => a.ServiceName)
+                .OrderByDescending(g => g.Count())
+                .Select(g => g.Key)
+                .FirstOrDefault();
+        }
+
+        _loading = false;
+    }
+
+    private async Task AddManualStamp()
+    {
+        await LoyaltyService.AddStampAsync(Id, null, _currentUserId, _stampNote, true);
+        _stampNote = string.Empty;
+        _showStampForm = false;
+        _stamps = await LoyaltyService.GetByClientAsync(Id);
+        _stampsTotal = _stamps.Count;
+    }
+
+    private async Task ResetCard()
+    {
+        await LoyaltyService.ResetCardAsync(Id);
+        _stamps = [];
+        _stampsTotal = 0;
+    }
+
+    private static string StatusLabel(AppointmentStatus s) => s switch
+    {
+        AppointmentStatus.Planned => "Zaplanowana",
+        AppointmentStatus.Confirmed => "Potwierdzona",
+        AppointmentStatus.Completed => "Zakończona",
+        AppointmentStatus.Cancelled => "Anulowana",
+        AppointmentStatus.NoShow => "Nieobecność",
+        _ => s.ToString()
+    };
+}

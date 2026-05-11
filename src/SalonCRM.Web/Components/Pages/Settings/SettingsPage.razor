@@ -1,0 +1,104 @@
+@page "/settings"
+@rendermode InteractiveServer
+@attribute [Microsoft.AspNetCore.Authorization.Authorize(Roles = "Admin")]
+@inject ISettingsService SettingsService
+
+<PageTitle>Ustawienia — SalonCRM</PageTitle>
+
+<div class="page-header">
+    <h1>Ustawienia salonu</h1>
+</div>
+
+@if (_loading)
+{
+    <div class="text-center py-4"><span class="spinner-border text-primary"></span></div>
+}
+else
+{
+    @if (!string.IsNullOrEmpty(_successMsg))
+    {
+        <div class="alert alert-success alert-dismissible">@_successMsg
+            <button type="button" class="btn-close" @onclick="() => _successMsg = null"></button>
+        </div>
+    }
+
+    <div class="card mb-4">
+        <div class="card-header"><strong>Informacje o salonie</strong></div>
+        <div class="card-body">
+            <div class="row g-3">
+                <div class="col-md-6">
+                    <label class="form-label">Nazwa salonu</label>
+                    <input class="form-control" @bind="_s.SalonName" />
+                </div>
+                <div class="col-md-6">
+                    <label class="form-label">Telefon</label>
+                    <input class="form-control" @bind="_s.PhoneNumber" />
+                </div>
+                <div class="col-12">
+                    <label class="form-label">Adres</label>
+                    <input class="form-control" @bind="_s.Address" />
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="card mb-4">
+        <div class="card-header"><strong>Godziny pracy</strong></div>
+        <div class="card-body">
+            <div class="row g-3 align-items-end">
+                <div class="col-md-4">
+                    <label class="form-label">Otwarcie (godzina)</label>
+                    <input type="number" class="form-control" min="0" max="23" @bind="_s.WorkDayStart" />
+                </div>
+                <div class="col-md-4">
+                    <label class="form-label">Zamknięcie (godzina)</label>
+                    <input type="number" class="form-control" min="1" max="24" @bind="_s.WorkDayEnd" />
+                </div>
+                <div class="col-md-4">
+                    <label class="form-label">Slot kalendarza (minuty)</label>
+                    <select class="form-select" @bind="_s.SlotMinutes">
+                        <option value="15">15 minut</option>
+                        <option value="30">30 minut</option>
+                        <option value="60">60 minut</option>
+                    </select>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="card mb-4">
+        <div class="card-header"><strong>Karta lojalnościowa</strong></div>
+        <div class="card-body">
+            <div class="row g-3 align-items-end">
+                <div class="col-md-4">
+                    <label class="form-label">Liczba pieczątek na nagrodę</label>
+                    <input type="number" class="form-control" min="1" max="50" @bind="_s.LoyaltyStampsForReward" />
+                </div>
+                <div class="col-md-4">
+                    <label class="form-label">Waluta</label>
+                    <input class="form-control" @bind="_s.Currency" maxlength="5" />
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <button class="btn btn-primary" @onclick="Save">Zapisz ustawienia</button>
+}
+
+@code {
+    private SalonCRM.Web.Data.Entities.SalonSettings _s = new();
+    private bool _loading = true;
+    private string? _successMsg;
+
+    protected override async Task OnInitializedAsync()
+    {
+        _s = await SettingsService.GetAsync();
+        _loading = false;
+    }
+
+    private async Task Save()
+    {
+        await SettingsService.SaveAsync(_s);
+        _successMsg = "Ustawienia zostały zapisane.";
+    }
+}

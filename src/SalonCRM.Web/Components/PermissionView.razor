@@ -1,0 +1,26 @@
+@inject IPermissionService PermService
+@using SalonCRM.Web.Services
+
+@if (_hasPermission)
+{
+    @ChildContent
+}
+
+@code {
+    [CascadingParameter]
+    private Task<AuthenticationState> AuthState { get; set; } = default!;
+
+    [Parameter]
+    public Permission Permission { get; set; }
+
+    [Parameter]
+    public RenderFragment? ChildContent { get; set; }
+
+    private bool _hasPermission;
+
+    protected override async Task OnInitializedAsync()
+    {
+        var state = await AuthState;
+        _hasPermission = await PermService.HasAsync(state.User, Permission);
+    }
+}

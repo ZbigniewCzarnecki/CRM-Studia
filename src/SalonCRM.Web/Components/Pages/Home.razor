@@ -28,21 +28,27 @@
         <div class="stat-value">@_upcomingCount</div>
         <div class="stat-label">Nadchodzących wizyt</div>
     </div>
-    <div class="stat-card stat-green">
-        <div class="stat-icon">💰</div>
-        <div class="stat-value">@_revenueToday.ToString("C0", new System.Globalization.CultureInfo("pl-PL"))</div>
-        <div class="stat-label">Przychód dziś</div>
-    </div>
-    <div class="stat-card stat-green">
-        <div class="stat-icon">📈</div>
-        <div class="stat-value">@_revenueMonth.ToString("C0", new System.Globalization.CultureInfo("pl-PL"))</div>
-        <div class="stat-label">Przychód w miesiącu</div>
-    </div>
-    <div class="stat-card">
-        <div class="stat-icon">✅</div>
-        <div class="stat-value">@_completedMonth</div>
-        <div class="stat-label">Zrealizowanych w miesiącu</div>
-    </div>
+    <PermissionView Permission="Permission.ViewReports">
+        <div class="stat-card stat-green">
+            <div class="stat-icon">💰</div>
+            <div class="stat-value">@_revenueToday.ToString("C0", new System.Globalization.CultureInfo("pl-PL"))</div>
+            <div class="stat-label">Przychód dziś</div>
+        </div>
+    </PermissionView>
+    <PermissionView Permission="Permission.ViewReports">
+        <div class="stat-card stat-green">
+            <div class="stat-icon">📈</div>
+            <div class="stat-value">@_revenueMonth.ToString("C0", new System.Globalization.CultureInfo("pl-PL"))</div>
+            <div class="stat-label">Przychód w miesiącu</div>
+        </div>
+    </PermissionView>
+    <PermissionView Permission="Permission.ViewReports">
+        <div class="stat-card">
+            <div class="stat-icon">✅</div>
+            <div class="stat-value">@_completedMonth</div>
+            <div class="stat-label">Zrealizowanych w miesiącu</div>
+        </div>
+    </PermissionView>
 </div>
 
 @if (_upcoming.Any())

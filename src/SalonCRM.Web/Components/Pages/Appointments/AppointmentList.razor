@@ -71,9 +71,9 @@ else
                             <td class="text-end">@a.TotalAmount.ToString("C", new System.Globalization.CultureInfo("pl-PL"))</td>
                             <td class="text-end">
                                 <button class="btn btn-sm btn-outline-primary me-1" @onclick="() => OpenForm(a)">Edytuj</button>
-                                <AuthorizeView Roles="Admin">
+                                <PermissionView Permission="Permission.DeleteAppointments">
                                     <button class="btn btn-sm btn-outline-danger" @onclick="() => ConfirmDelete(a)">Usuń</button>
-                                </AuthorizeView>
+                                </PermissionView>
                             </td>
                         </tr>
                     }

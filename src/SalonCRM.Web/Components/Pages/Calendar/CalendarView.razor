@@ -4,6 +4,7 @@
 @using SalonCRM.Web.Components.Pages.Appointments
 @inject IAppointmentService AppointmentService
 @inject IServiceCrmService ServiceCrmService
+@inject ISettingsService SettingsService
 
 <PageTitle>Kalendarz — SalonCRM</PageTitle>
 
@@ -46,14 +47,16 @@ else
         {
             var row = _rows[rowIdx];
             var rowAppts = _appointments.Where(a => MatchesRow(a, row)).ToList();
-            var localRowIdx = rowIdx;
 
             <div class="cal-row">
                 <div class="cal-label-col">@row</div>
-                <div class="cal-grid-area" @onclick="e => OnGridClick(e, row)">
+                <div class="cal-grid-area">
                     @for (int slot = 0; slot < TotalSlots; slot++)
                     {
-                        <div class="cal-slot @(slot % 2 == 0 ? "cal-slot-full" : "")"></div>
+                        var localSlot = slot;
+                        var localRow = row;
+                        <div class="cal-slot @(slot % 2 == 0 ? "cal-slot-full" : "")"
+                             @onclick="() => OnSlotClick(localRow, localSlot)"></div>
                     }
                     @foreach (var appt in rowAppts)
                     {
@@ -82,12 +85,12 @@ else
 }
 
 @code {
-    private const int StartHour = 8;
-    private const int EndHour = 20;
-    private const int TotalSlots = (EndHour - StartHour) * 2;
+    private int StartHour => _settings.WorkDayStart;
+    private int EndHour => _settings.WorkDayEnd;
+    private int TotalSlots => (EndHour - StartHour) * 2;
     private const int SlotWidth = 80;
-    private const int LabelColWidth = 160;
 
+    private SalonCRM.Web.Data.Entities.SalonSettings _settings = new();
     private DateTime _selectedDate = DateTime.Today;
     private List<AppointmentEntity> _appointments = [];
     private List<string> _rows = [];
@@ -101,6 +104,7 @@ else
     private async Task LoadAsync()
     {
         _loading = true;
+        _settings = await SettingsService.GetAsync();
         _services = await ServiceCrmService.GetAllAsync();
         _rows = _services
             .Select(s => string.IsNullOrWhiteSpace(s.Category) ? s.Name : s.Category)
@@ -135,12 +139,11 @@ else
     private async Task NextDay() { _selectedDate = _selectedDate.AddDays(1); await LoadAsync(); }
     private async Task GoToday() { _selectedDate = DateTime.Today; await LoadAsync(); }
 
-    private void OnGridClick(MouseEventArgs e, string row)
+    private void OnSlotClick(string row, int slotIndex)
     {
-        var minutesFromStart = (int)(e.OffsetX / SlotWidth) * 30;
-        var hour = StartHour + minutesFromStart / 60;
-        var minute = minutesFromStart % 60;
-        var clickedTime = _selectedDate.Date.AddHours(hour).AddMinutes(minute);
+        var clickedTime = _selectedDate.Date
+            .AddHours(StartHour)
+            .AddMinutes(slotIndex * 30);
 
         var service = _services.FirstOrDefault(s =>
             (string.IsNullOrWhiteSpace(s.Category) ? s.Name : s.Category) == row);

@@ -31,6 +31,9 @@ builder.Services.ConfigureApplicationCookie(o =>
 builder.Services.AddScoped<IClientService, ClientService>();
 builder.Services.AddScoped<IServiceCrmService, ServiceCrmService>();
 builder.Services.AddScoped<IAppointmentService, AppointmentService>();
+builder.Services.AddScoped<ISettingsService, SettingsService>();
+builder.Services.AddScoped<ILoyaltyService, LoyaltyService>();
+builder.Services.AddScoped<IPermissionService, PermissionService>();
 
 builder.Services.AddRazorComponents()
     .AddInteractiveServerComponents();

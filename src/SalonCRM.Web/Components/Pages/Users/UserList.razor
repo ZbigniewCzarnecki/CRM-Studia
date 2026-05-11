@@ -3,6 +3,7 @@
 @attribute [Microsoft.AspNetCore.Authorization.Authorize(Roles = "Admin")]
 @inject UserManager<SalonCRM.Web.Data.ApplicationUser> UserManager
 @inject AuthenticationStateProvider AuthStateProvider
+@inject IPermissionService PermissionService
 
 <PageTitle>Użytkownicy — SalonCRM</PageTitle>
 
@@ -41,6 +42,8 @@
                 {
                     var isLocked = u.User.LockoutEnd.HasValue && u.User.LockoutEnd > DateTimeOffset.UtcNow;
                     var isSelf = u.User.Id == _currentUserId;
+                    var isPracownik = u.Role == "Pracownik";
+                    var isExpanded = _expandedPerms.Contains(u.User.Id);
                     <tr class="@(isLocked ? "text-muted" : "")">
                         <td>@u.User.DisplayName</td>
                         <td>@u.User.Email</td>
@@ -49,7 +52,7 @@
                             {
                                 <select class="form-select form-select-sm w-auto" value="@u.Role"
                                         @onchange="e => ChangeRole(u.User, e.Value?.ToString() ?? u.Role)">
-                                    <option value="Staff">Staff</option>
+                                    <option value="Pracownik">Pracownik</option>
                                     <option value="Admin">Admin</option>
                                 </select>
                             }
@@ -69,6 +72,13 @@
                             }
                         </td>
                         <td class="text-end">
+                            @if (isPracownik)
+                            {
+                                <button class="btn btn-sm btn-outline-secondary me-1"
+                                        @onclick="() => TogglePerms(u.User.Id)">
+                                    @(isExpanded ? "Ukryj uprawnienia" : "Uprawnienia")
+                                </button>
+                            }
                             @if (!isSelf)
                             {
                                 @if (isLocked)
@@ -82,6 +92,81 @@
                             }
                         </td>
                     </tr>
+                    @if (isExpanded && _permsMap.TryGetValue(u.User.Id, out var perms))
+                    {
+                        <tr>
+                            <td colspan="5" class="bg-light p-3">
+                                <div class="fw-bold mb-2">Uprawnienia pracownika: @u.User.DisplayName</div>
+                                <div class="row g-2">
+                                    <div class="col-md-4">
+                                        <div class="form-check">
+                                            <input type="checkbox" class="form-check-input" id="pma-@u.User.Id"
+                                                   checked="@perms.CanManageAppointments"
+                                                   @onchange="e => { perms.CanManageAppointments = (bool)(e.Value ?? false); }" />
+                                            <label class="form-check-label" for="pma-@u.User.Id">Zarządzanie wizytami</label>
+                                        </div>
+                                    </div>
+                                    <div class="col-md-4">
+                                        <div class="form-check">
+                                            <input type="checkbox" class="form-check-input" id="pda-@u.User.Id"
+                                                   checked="@perms.CanDeleteAppointments"
+                                                   @onchange="e => { perms.CanDeleteAppointments = (bool)(e.Value ?? false); }" />
+                                            <label class="form-check-label" for="pda-@u.User.Id">Usuwanie wizyt</label>
+                                        </div>
+                                    </div>
+                                    <div class="col-md-4">
+                                        <div class="form-check">
+                                            <input type="checkbox" class="form-check-input" id="pec-@u.User.Id"
+                                                   checked="@perms.CanEditClientData"
+                                                   @onchange="e => { perms.CanEditClientData = (bool)(e.Value ?? false); }" />
+                                            <label class="form-check-label" for="pec-@u.User.Id">Edycja danych klientów</label>
+                                        </div>
+                                    </div>
+                                    <div class="col-md-4">
+                                        <div class="form-check">
+                                            <input type="checkbox" class="form-check-input" id="pms-@u.User.Id"
+                                                   checked="@perms.CanManageServices"
+                                                   @onchange="e => { perms.CanManageServices = (bool)(e.Value ?? false); }" />
+                                            <label class="form-check-label" for="pms-@u.User.Id">Zarządzanie usługami</label>
+                                        </div>
+                                    </div>
+                                    <div class="col-md-4">
+                                        <div class="form-check">
+                                            <input type="checkbox" class="form-check-input" id="pvr-@u.User.Id"
+                                                   checked="@perms.CanViewReports"
+                                                   @onchange="e => { perms.CanViewReports = (bool)(e.Value ?? false); }" />
+                                            <label class="form-check-label" for="pvr-@u.User.Id">Podgląd przychodów</label>
+                                        </div>
+                                    </div>
+                                    <div class="col-md-4">
+                                        <div class="form-check">
+                                            <input type="checkbox" class="form-check-input" id="pmw-@u.User.Id"
+                                                   checked="@perms.CanManageWorkers"
+                                                   @onchange="e => { perms.CanManageWorkers = (bool)(e.Value ?? false); }" />
+                                            <label class="form-check-label" for="pmw-@u.User.Id">Zarządzanie pracownikami</label>
+                                        </div>
+                                    </div>
+                                    <div class="col-md-4">
+                                        <div class="form-check">
+                                            <input type="checkbox" class="form-check-input" id="pset-@u.User.Id"
+                                                   checked="@perms.CanManageSettings"
+                                                   @onchange="e => { perms.CanManageSettings = (bool)(e.Value ?? false); }" />
+                                            <label class="form-check-label" for="pset-@u.User.Id">Ustawienia salonu</label>
+                                        </div>
+                                    </div>
+                                    <div class="col-md-4">
+                                        <div class="form-check">
+                                            <input type="checkbox" class="form-check-input" id="plc-@u.User.Id"
+                                                   checked="@perms.CanManageLoyaltyCards"
+                                                   @onchange="e => { perms.CanManageLoyaltyCards = (bool)(e.Value ?? false); }" />
+                                            <label class="form-check-label" for="plc-@u.User.Id">Karty lojalnościowe</label>
+                                        </div>
+                                    </div>
+                                </div>
+                                <button class="btn btn-primary btn-sm mt-3" @onclick="() => SavePerms(u.User.Id)">Zapisz uprawnienia</button>
+                            </td>
+                        </tr>
+                    }
                 }
             </tbody>
         </table>
@@ -118,7 +203,7 @@
                         <div class="col-md-6">
                             <label class="form-label">Rola</label>
                             <InputSelect @bind-Value="_newModel.Role" class="form-select">
-                                <option value="Staff">Staff — pracownik</option>
+                                <option value="Pracownik">Pracownik</option>
                                 <option value="Admin">Admin — pełny dostęp</option>
                             </InputSelect>
                         </div>
@@ -142,6 +227,8 @@
     private string? _successMsg;
     private string? _errorMsg;
     private NewUserModel _newModel = new();
+    private HashSet<string> _expandedPerms = [];
+    private Dictionary<string, SalonCRM.Web.Data.Entities.UserPermissions> _permsMap = [];
 
     protected override async Task OnInitializedAsync()
     {
@@ -160,6 +247,32 @@
             rows.Add(new UserRow(u, roles.FirstOrDefault() ?? "—"));
         }
         _users = rows;
+
+        // Preload permissions for Pracownicy
+        foreach (var u in _users.Where(u => u.Role == "Pracownik"))
+        {
+            if (!_permsMap.ContainsKey(u.User.Id))
+                _permsMap[u.User.Id] = await PermissionService.GetOrCreateAsync(u.User.Id);
+        }
+    }
+
+    private async Task TogglePerms(string userId)
+    {
+        if (!_expandedPerms.Remove(userId))
+        {
+            _expandedPerms.Add(userId);
+            if (!_permsMap.ContainsKey(userId))
+                _permsMap[userId] = await PermissionService.GetOrCreateAsync(userId);
+        }
+    }
+
+    private async Task SavePerms(string userId)
+    {
+        if (_permsMap.TryGetValue(userId, out var perms))
+        {
+            await PermissionService.SaveAsync(perms);
+            _successMsg = "Uprawnienia zostały zapisane.";
+        }
     }
 
     private async Task ChangeRole(SalonCRM.Web.Data.ApplicationUser user, string newRole)
@@ -167,6 +280,8 @@
         var currentRoles = await UserManager.GetRolesAsync(user);
         await UserManager.RemoveFromRolesAsync(user, currentRoles);
         await UserManager.AddToRoleAsync(user, newRole);
+        if (newRole == "Pracownik")
+            await PermissionService.GetOrCreateAsync(user.Id);
         _successMsg = $"Rola {user.DisplayName} zmieniona na {newRole}.";
         await LoadUsersAsync();
     }
@@ -193,6 +308,8 @@
         if (result.Succeeded)
         {
             await UserManager.AddToRoleAsync(user, _newModel.Role);
+            if (_newModel.Role == "Pracownik")
+                await PermissionService.GetOrCreateAsync(user.Id);
             _successMsg = $"Konto dla {_newModel.Email} zostało utworzone.";
             _newModel = new();
             _showAddForm = false;
@@ -215,6 +332,6 @@
         [System.ComponentModel.DataAnnotations.Required, System.ComponentModel.DataAnnotations.MinLength(8)]
         public string Password { get; set; } = string.Empty;
 
-        public string Role { get; set; } = "Staff";
+        public string Role { get; set; } = "Pracownik";
     }
 }

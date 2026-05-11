@@ -7,8 +7,13 @@ namespace SalonCRM.Web.Services;
 public class AppointmentService : IAppointmentService
 {
     private readonly ApplicationDbContext _db;
+    private readonly ILoyaltyService _loyalty;
 
-    public AppointmentService(ApplicationDbContext db) => _db = db;
+    public AppointmentService(ApplicationDbContext db, ILoyaltyService loyalty)
+    {
+        _db = db;
+        _loyalty = loyalty;
+    }
 
     public Task<List<AppointmentEntity>> GetAllAsync(CancellationToken ct = default) =>
         _db.Appointments.AsNoTracking().OrderBy(a => a.Date).ToListAsync(ct);
@@ -68,10 +73,30 @@ public class AppointmentService : IAppointmentService
             .OrderBy(a => a.Date)
             .ToListAsync(ct);
 
-    public Task UpdateStatusAsync(int id, AppointmentStatus status, CancellationToken ct = default) =>
-        _db.Appointments
+    public async Task UpdateStatusAsync(int id, AppointmentStatus status, CancellationToken ct = default)
+    {
+        await _db.Appointments
             .Where(a => a.Id == id)
             .ExecuteUpdateAsync(s => s.SetProperty(a => a.Status, status), ct);
+
+        if (status == AppointmentStatus.Completed)
+        {
+            var appt = await _db.Appointments.AsNoTracking().FirstOrDefaultAsync(a => a.Id == id, ct);
+            if (appt != null)
+            {
+                var client = await _db.Clients.AsNoTracking()
+                    .FirstOrDefaultAsync(c => (c.FirstName + " " + c.LastName) == appt.ClientName, ct);
+                if (client != null)
+                    await _loyalty.AddStampAsync(client.Id, id, "", "", false, ct);
+            }
+        }
+    }
+
+    public Task<List<AppointmentEntity>> GetByClientNameAsync(string clientName, CancellationToken ct = default) =>
+        _db.Appointments.AsNoTracking()
+            .Where(a => a.ClientName == clientName)
+            .OrderByDescending(a => a.Date)
+            .ToListAsync(ct);
 
     public async Task<decimal> GetRevenueAsync(DateTime from, DateTime to, CancellationToken ct = default)
     {

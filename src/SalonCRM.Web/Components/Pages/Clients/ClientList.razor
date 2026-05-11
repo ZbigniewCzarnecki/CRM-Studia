@@ -2,15 +2,28 @@
 @rendermode InteractiveServer
 @attribute [Microsoft.AspNetCore.Authorization.Authorize]
 @inject IClientService ClientService
+@inject IJSRuntime JS
 
 <PageTitle>Klienci — SalonCRM</PageTitle>
 
 <div class="page-header">
     <h1>Klienci</h1>
-    <AuthorizeView Roles="Admin">
-        <button class="btn btn-primary" @onclick="() => OpenForm(null)">+ Dodaj klienta</button>
-    </AuthorizeView>
+    <div class="d-flex gap-2 align-items-center">
+        <button class="btn btn-outline-secondary btn-sm" @onclick="ExportCsv">Eksportuj CSV</button>
+        <label for="csv-import-input" class="btn btn-outline-secondary btn-sm mb-0" style="cursor:pointer">Importuj CSV</label>
+        <InputFile id="csv-import-input" accept=".csv" style="display:none" OnChange="ImportCsv" />
+        <PermissionView Permission="Permission.EditClientData">
+            <button class="btn btn-primary" @onclick="() => OpenForm(null)">+ Dodaj klienta</button>
+        </PermissionView>
+    </div>
 </div>
+
+@if (!string.IsNullOrEmpty(_importResult))
+{
+    <div class="alert alert-info alert-dismissible">@_importResult
+        <button type="button" class="btn-close" @onclick="() => _importResult = null"></button>
+    </div>
+}
 
 <div class="search-bar mb-3">
     <input class="form-control" placeholder="Szukaj po imieniu, nazwisku, emailu..."
@@ -52,13 +65,14 @@ else
                             <td>@c.PhoneNumber</td>
                             <td>@c.Email</td>
                             <td class="text-end">
-                                <AuthorizeView Roles="Admin">
+                                <a href="/clients/@c.Id" class="btn btn-sm btn-outline-info me-1">Profil</a>
+                                <PermissionView Permission="Permission.EditClientData">
                                     <button class="btn btn-sm btn-outline-primary me-1" @onclick="() => OpenForm(c)">Edytuj</button>
-                                </AuthorizeView>
+                                </PermissionView>
                                 <button class="btn btn-sm btn-outline-secondary me-1" @onclick="() => OpenNotes(c)">Notatki</button>
-                                <AuthorizeView Roles="Admin">
+                                <PermissionView Permission="Permission.EditClientData">
                                     <button class="btn btn-sm btn-outline-danger" @onclick="() => ConfirmDelete(c)">Usuń</button>
-                                </AuthorizeView>
+                                </PermissionView>
                             </td>
                         </tr>
                     }
@@ -115,6 +129,7 @@ else
     private ClientEntity? _toDelete;
     private ClientEntity? _notesClient;
     private string _notesText = string.Empty;
+    private string? _importResult;
 
     protected override async Task OnInitializedAsync() => await LoadAsync();
 
@@ -128,6 +143,47 @@ else
     }
 
     private async Task OnSearch() => await LoadAsync();
+
+    private async Task ExportCsv()
+    {
+        var all = await ClientService.GetAllAsync();
+        var sb = new System.Text.StringBuilder();
+        sb.AppendLine("Id,Imię,Nazwisko,Telefon,Email,Notatki");
+        foreach (var c in all)
+        {
+            var notes = c.Notes.Replace("\"", "\"\"");
+            sb.AppendLine($"{c.Id},\"{c.FirstName}\",\"{c.LastName}\",\"{c.PhoneNumber}\",\"{c.Email}\",\"{notes}\"");
+        }
+        var base64 = Convert.ToBase64String(System.Text.Encoding.UTF8.GetBytes(sb.ToString()));
+        await JS.InvokeVoidAsync("downloadCsv", "klienci.csv", base64);
+    }
+
+    private async Task ImportCsv(InputFileChangeEventArgs e)
+    {
+        using var reader = new System.IO.StreamReader(e.File.OpenReadStream(maxAllowedSize: 5_000_000));
+        var content = await reader.ReadToEndAsync();
+        var lines = content.Split('\n', StringSplitOptions.RemoveEmptyEntries).Skip(1);
+        int added = 0, skipped = 0;
+        var existing = (await ClientService.GetAllAsync()).Select(c => c.Email.ToLower()).ToHashSet();
+        foreach (var line in lines)
+        {
+            var parts = line.Split(',');
+            if (parts.Length < 5) continue;
+            var email = parts[4].Trim().Trim('"');
+            if (string.IsNullOrWhiteSpace(email) || existing.Contains(email.ToLower())) { skipped++; continue; }
+            await ClientService.CreateAsync(new ClientEntity
+            {
+                FirstName = parts[1].Trim().Trim('"'),
+                LastName = parts[2].Trim().Trim('"'),
+                PhoneNumber = parts[3].Trim().Trim('"'),
+                Email = email,
+                Notes = parts.Length > 5 ? parts[5].Trim().Trim('"').TrimEnd('\r') : ""
+            });
+            added++;
+        }
+        _importResult = $"Zaimportowano: {added}, pominięto (duplikaty): {skipped}";
+        await LoadAsync();
+    }
 
     private void OpenForm(ClientEntity? client)
     {

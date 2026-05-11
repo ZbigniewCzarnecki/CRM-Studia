@@ -11,4 +11,7 @@ public class ApplicationDbContext : IdentityDbContext<ApplicationUser>
     public DbSet<ClientEntity> Clients => Set<ClientEntity>();
     public DbSet<ServiceEntity> Services => Set<ServiceEntity>();
     public DbSet<AppointmentEntity> Appointments => Set<AppointmentEntity>();
+    public DbSet<SalonSettings> Settings => Set<SalonSettings>();
+    public DbSet<LoyaltyStamp> LoyaltyStamps => Set<LoyaltyStamp>();
+    public DbSet<UserPermissions> UserPermissions => Set<UserPermissions>();
 }
