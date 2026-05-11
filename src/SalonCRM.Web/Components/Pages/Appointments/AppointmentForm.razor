@@ -1,0 +1,82 @@
+@inject IAppointmentService AppointmentService
+@inject IClientService ClientService
+@inject IServiceCrmService ServiceCrmService
+
+<div class="modal-backdrop">
+    <div class="modal-dialog-custom">
+        <div class="modal-header-custom">
+            <h5>@(Appointment.Id == 0 ? "Nowa wizyta" : "Edytuj wizytę")</h5>
+            <button class="btn-close" @onclick="OnCancelled"></button>
+        </div>
+        <EditForm Model="Appointment" OnValidSubmit="Save" FormName="appointment-form">
+            <DataAnnotationsValidator />
+            <div class="modal-body-custom">
+                <div class="row g-3">
+                    <div class="col-md-6">
+                        <label class="form-label">Klient *</label>
+                        <InputSelect @bind-Value="Appointment.ClientName" class="form-select">
+                            <option value="">-- wybierz klienta --</option>
+                            @foreach (var c in _clients)
+                            {
+                                <option value="@($"{c.FirstName} {c.LastName}")">@c.FirstName @c.LastName</option>
+                            }
+                        </InputSelect>
+                        <ValidationMessage For="() => Appointment.ClientName" />
+                    </div>
+                    <div class="col-md-6">
+                        <label class="form-label">Usługa *</label>
+                        <InputSelect @bind-Value="Appointment.ServiceName" class="form-select" @onchange="OnServiceChanged">
+                            <option value="">-- wybierz usługę --</option>
+                            @foreach (var s in _services)
+                            {
+                                <option value="@s.Name">@s.Name (@s.Price PLN)</option>
+                            }
+                        </InputSelect>
+                        <ValidationMessage For="() => Appointment.ServiceName" />
+                    </div>
+                    <div class="col-md-6">
+                        <label class="form-label">Data i godzina *</label>
+                        <InputDate Type="InputDateType.DateTimeLocal" @bind-Value="Appointment.Date" class="form-control" />
+                    </div>
+                    <div class="col-md-6">
+                        <label class="form-label">Kwota (PLN)</label>
+                        <InputNumber @bind-Value="Appointment.TotalAmount" class="form-control" />
+                    </div>
+                </div>
+            </div>
+            <div class="modal-footer-custom">
+                <button type="submit" class="btn btn-primary">Zapisz</button>
+                <button type="button" class="btn btn-secondary ms-2" @onclick="OnCancelled">Anuluj</button>
+            </div>
+        </EditForm>
+    </div>
+</div>
+
+@code {
+    [Parameter, EditorRequired] public AppointmentEntity Appointment { get; set; } = new();
+    [Parameter] public EventCallback OnSaved { get; set; }
+    [Parameter] public EventCallback OnCancelled { get; set; }
+
+    private List<ClientEntity> _clients = [];
+    private List<ServiceEntity> _services = [];
+
+    protected override async Task OnInitializedAsync()
+    {
+        _clients = await ClientService.GetAllAsync();
+        _services = await ServiceCrmService.GetAllAsync();
+    }
+
+    private void OnServiceChanged(ChangeEventArgs e)
+    {
+        var name = e.Value?.ToString();
+        var service = _services.FirstOrDefault(s => s.Name == name);
+        if (service != null) Appointment.TotalAmount = service.Price;
+    }
+
+    private async Task Save()
+    {
+        if (Appointment.Id == 0) await AppointmentService.CreateAsync(Appointment);
+        else await AppointmentService.UpdateAsync(Appointment);
+        await OnSaved.InvokeAsync();
+    }
+}

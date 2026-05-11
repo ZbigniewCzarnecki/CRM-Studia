@@ -1,0 +1,19 @@
+<nav class="nav-menu">
+    <NavLink class="nav-link" href="" Match="NavLinkMatch.All">
+        <span class="nav-icon">📊</span> Dashboard
+    </NavLink>
+    <NavLink class="nav-link" href="clients">
+        <span class="nav-icon">👤</span> Klienci
+    </NavLink>
+    <NavLink class="nav-link" href="services">
+        <span class="nav-icon">✂️</span> Usługi
+    </NavLink>
+    <NavLink class="nav-link" href="appointments">
+        <span class="nav-icon">📅</span> Wizyty
+    </NavLink>
+    <AuthorizeView Roles="Admin">
+        <NavLink class="nav-link" href="register">
+            <span class="nav-icon">⚙️</span> Użytkownicy
+        </NavLink>
+    </AuthorizeView>
+</nav>

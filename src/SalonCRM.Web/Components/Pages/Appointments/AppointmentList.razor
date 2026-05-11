@@ -1,0 +1,116 @@
+@page "/appointments"
+@attribute [Microsoft.AspNetCore.Authorization.Authorize]
+@inject IAppointmentService AppointmentService
+
+<PageTitle>Wizyty — SalonCRM</PageTitle>
+
+<div class="page-header">
+    <h1>Wizyty</h1>
+    <button class="btn btn-primary" @onclick="() => OpenForm(null)">+ Dodaj wizytę</button>
+</div>
+
+<div class="filter-bar mb-3 row g-2">
+    <div class="col-md-4">
+        <input class="form-control" placeholder="Szukaj klient / usługa..."
+               @bind="_query" @bind:event="oninput" @bind:after="OnSearch" />
+    </div>
+    <div class="col-md-3">
+        <input type="date" class="form-control" @bind="_from" @bind:after="OnSearch" />
+    </div>
+    <div class="col-md-3">
+        <input type="date" class="form-control" @bind="_to" @bind:after="OnSearch" />
+    </div>
+    <div class="col-md-2">
+        <button class="btn btn-outline-secondary w-100" @onclick="ClearFilters">Wyczyść</button>
+    </div>
+</div>
+
+@if (_loading)
+{
+    <div class="text-center py-4"><span class="spinner-border text-primary"></span></div>
+}
+else if (!_appointments.Any())
+{
+    <div class="empty-state">Brak wizyt. Dodaj pierwszą!</div>
+}
+else
+{
+    <div class="card">
+        <div class="card-body p-0">
+            <table class="table table-hover mb-0">
+                <thead>
+                    <tr>
+                        <th>Data</th>
+                        <th>Klient</th>
+                        <th>Usługa</th>
+                        <th class="text-end">Kwota</th>
+                        <th></th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach (var a in _appointments)
+                    {
+                        <tr class="@(a.Date < DateTime.Now ? "text-muted" : "")">
+                            <td>@a.Date.ToString("dd.MM.yyyy HH:mm")</td>
+                            <td>@a.ClientName</td>
+                            <td>@a.ServiceName</td>
+                            <td class="text-end">@a.TotalAmount.ToString("C", new System.Globalization.CultureInfo("pl-PL"))</td>
+                            <td class="text-end">
+                                <button class="btn btn-sm btn-outline-primary me-1" @onclick="() => OpenForm(a)">Edytuj</button>
+                                <button class="btn btn-sm btn-outline-danger" @onclick="() => ConfirmDelete(a)">Usuń</button>
+                            </td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        </div>
+    </div>
+}
+
+@if (_showForm)
+{
+    <AppointmentForm Appointment="_editing" OnSaved="OnSaved" OnCancelled="CloseForm" />
+}
+
+@if (_showDeleteConfirm && _toDelete != null)
+{
+    <div class="modal-backdrop">
+        <div class="confirm-dialog">
+            <p>Usunąć wizytę <strong>@_toDelete.ClientName</strong> (@_toDelete.Date.ToString("dd.MM.yyyy HH:mm"))?</p>
+            <button class="btn btn-danger me-2" @onclick="ExecuteDelete">Usuń</button>
+            <button class="btn btn-secondary" @onclick="() => _showDeleteConfirm = false">Anuluj</button>
+        </div>
+    </div>
+}
+
+@code {
+    private List<AppointmentEntity> _appointments = [];
+    private string _query = string.Empty;
+    private DateTime? _from, _to;
+    private bool _loading = true, _showForm, _showDeleteConfirm;
+    private AppointmentEntity? _editing, _toDelete;
+
+    protected override async Task OnInitializedAsync() => await LoadAsync();
+
+    private async Task LoadAsync()
+    {
+        _loading = true;
+        _appointments = await AppointmentService.SearchAsync(_query, _from, _to);
+        _loading = false;
+    }
+
+    private async Task OnSearch() => await LoadAsync();
+    private async Task ClearFilters() { _query = ""; _from = null; _to = null; await LoadAsync(); }
+
+    private void OpenForm(AppointmentEntity? a)
+    {
+        _editing = a == null ? new() { Date = DateTime.Now.AddDays(1).Date.AddHours(10) }
+            : new() { Id = a.Id, ClientName = a.ClientName, ServiceName = a.ServiceName, Date = a.Date, TotalAmount = a.TotalAmount };
+        _showForm = true;
+    }
+
+    private void CloseForm() => _showForm = false;
+    private async Task OnSaved() { _showForm = false; await LoadAsync(); }
+    private void ConfirmDelete(AppointmentEntity a) { _toDelete = a; _showDeleteConfirm = true; }
+    private async Task ExecuteDelete() { if (_toDelete != null) await AppointmentService.DeleteAsync(_toDelete.Id); _showDeleteConfirm = false; await LoadAsync(); }
+}

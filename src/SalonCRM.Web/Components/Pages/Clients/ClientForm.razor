@@ -1,0 +1,55 @@
+@inject IClientService ClientService
+
+<div class="modal-backdrop">
+    <div class="modal-dialog-custom">
+        <div class="modal-header-custom">
+            <h5>@(Client.Id == 0 ? "Nowy klient" : "Edytuj klienta")</h5>
+            <button class="btn-close" @onclick="OnCancelled"></button>
+        </div>
+        <EditForm Model="Client" OnValidSubmit="Save" FormName="client-form">
+            <DataAnnotationsValidator />
+            <div class="modal-body-custom">
+                <div class="row g-3">
+                    <div class="col-md-6">
+                        <label class="form-label">Imię *</label>
+                        <InputText @bind-Value="Client.FirstName" class="form-control" />
+                        <ValidationMessage For="() => Client.FirstName" />
+                    </div>
+                    <div class="col-md-6">
+                        <label class="form-label">Nazwisko *</label>
+                        <InputText @bind-Value="Client.LastName" class="form-control" />
+                        <ValidationMessage For="() => Client.LastName" />
+                    </div>
+                    <div class="col-md-6">
+                        <label class="form-label">Telefon</label>
+                        <InputText @bind-Value="Client.PhoneNumber" class="form-control" />
+                    </div>
+                    <div class="col-md-6">
+                        <label class="form-label">Email *</label>
+                        <InputText @bind-Value="Client.Email" class="form-control" />
+                        <ValidationMessage For="() => Client.Email" />
+                    </div>
+                </div>
+            </div>
+            <div class="modal-footer-custom">
+                <button type="submit" class="btn btn-primary">Zapisz</button>
+                <button type="button" class="btn btn-secondary ms-2" @onclick="OnCancelled">Anuluj</button>
+            </div>
+        </EditForm>
+    </div>
+</div>
+
+@code {
+    [Parameter, EditorRequired] public ClientEntity Client { get; set; } = new();
+    [Parameter] public EventCallback OnSaved { get; set; }
+    [Parameter] public EventCallback OnCancelled { get; set; }
+
+    private async Task Save()
+    {
+        if (Client.Id == 0)
+            await ClientService.CreateAsync(Client);
+        else
+            await ClientService.UpdateAsync(Client);
+        await OnSaved.InvokeAsync();
+    }
+}

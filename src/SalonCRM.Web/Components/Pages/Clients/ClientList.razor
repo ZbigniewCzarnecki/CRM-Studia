@@ -1,0 +1,122 @@
+@page "/clients"
+@attribute [Microsoft.AspNetCore.Authorization.Authorize]
+@inject IClientService ClientService
+
+<PageTitle>Klienci — SalonCRM</PageTitle>
+
+<div class="page-header">
+    <h1>Klienci</h1>
+    <button class="btn btn-primary" @onclick="() => OpenForm(null)">+ Dodaj klienta</button>
+</div>
+
+<div class="search-bar mb-3">
+    <input class="form-control" placeholder="Szukaj po imieniu, nazwisku, emailu..."
+           @bind="_query" @bind:event="oninput" @bind:after="OnSearch" />
+</div>
+
+@if (_loading)
+{
+    <div class="text-center py-4"><span class="spinner-border text-primary"></span></div>
+}
+else if (!_clients.Any())
+{
+    <div class="empty-state">Brak klientów. Dodaj pierwszego!</div>
+}
+else
+{
+    <div class="card">
+        <div class="card-body p-0">
+            <table class="table table-hover mb-0">
+                <thead>
+                    <tr>
+                        <th>Imię i nazwisko</th>
+                        <th>Telefon</th>
+                        <th>Email</th>
+                        <th></th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach (var c in _clients)
+                    {
+                        <tr>
+                            <td>@c.FirstName @c.LastName</td>
+                            <td>@c.PhoneNumber</td>
+                            <td>@c.Email</td>
+                            <td class="text-end">
+                                <button class="btn btn-sm btn-outline-primary me-1" @onclick="() => OpenForm(c)">Edytuj</button>
+                                <button class="btn btn-sm btn-outline-danger" @onclick="() => ConfirmDelete(c)">Usuń</button>
+                            </td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        </div>
+    </div>
+}
+
+@if (_showForm)
+{
+    <ClientForm Client="_editing" OnSaved="OnSaved" OnCancelled="CloseForm" />
+}
+
+@if (_showDeleteConfirm && _toDelete != null)
+{
+    <div class="modal-backdrop">
+        <div class="confirm-dialog">
+            <p>Usunąć klienta <strong>@_toDelete.FirstName @_toDelete.LastName</strong>?</p>
+            <button class="btn btn-danger me-2" @onclick="ExecuteDelete">Usuń</button>
+            <button class="btn btn-secondary" @onclick="() => _showDeleteConfirm = false">Anuluj</button>
+        </div>
+    </div>
+}
+
+@code {
+    private List<ClientEntity> _clients = [];
+    private string _query = string.Empty;
+    private bool _loading = true;
+    private bool _showForm;
+    private bool _showDeleteConfirm;
+    private ClientEntity? _editing;
+    private ClientEntity? _toDelete;
+
+    protected override async Task OnInitializedAsync() => await LoadAsync();
+
+    private async Task LoadAsync()
+    {
+        _loading = true;
+        _clients = string.IsNullOrWhiteSpace(_query)
+            ? await ClientService.GetAllAsync()
+            : await ClientService.SearchAsync(_query);
+        _loading = false;
+    }
+
+    private async Task OnSearch() => await LoadAsync();
+
+    private void OpenForm(ClientEntity? client)
+    {
+        _editing = client == null ? new ClientEntity() : new ClientEntity
+        {
+            Id = client.Id, FirstName = client.FirstName, LastName = client.LastName,
+            PhoneNumber = client.PhoneNumber, Email = client.Email
+        };
+        _showForm = true;
+    }
+
+    private void CloseForm() => _showForm = false;
+
+    private async Task OnSaved()
+    {
+        _showForm = false;
+        await LoadAsync();
+    }
+
+    private void ConfirmDelete(ClientEntity c) { _toDelete = c; _showDeleteConfirm = true; }
+
+    private async Task ExecuteDelete()
+    {
+        if (_toDelete != null)
+            await ClientService.DeleteAsync(_toDelete.Id);
+        _showDeleteConfirm = false;
+        await LoadAsync();
+    }
+}

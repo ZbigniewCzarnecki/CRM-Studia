@@ -1,0 +1,34 @@
+@inherits LayoutComponentBase
+
+<AuthorizeView>
+    <Authorized>
+        <div class="crm-layout">
+            <nav class="sidebar">
+                <div class="sidebar-brand">
+                    <span>💅</span>
+                    <span class="brand-name">SalonCRM</span>
+                </div>
+                <NavMenu />
+                <div class="sidebar-footer">
+                    <div class="user-info">@context.User.Identity?.Name</div>
+                    <form method="post" action="/logout">
+                        <AntiforgeryToken />
+                        <button type="submit" class="btn-logout">Wyloguj</button>
+                    </form>
+                </div>
+            </nav>
+            <main class="main-content">
+                @Body
+            </main>
+        </div>
+    </Authorized>
+    <NotAuthorized>
+        @Body
+    </NotAuthorized>
+</AuthorizeView>
+
+<div id="blazor-error-ui">
+    Wystąpił nieoczekiwany błąd.
+    <a href="" class="reload">Odśwież</a>
+    <a class="dismiss">🗙</a>
+</div>

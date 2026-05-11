@@ -1,0 +1,78 @@
+@page "/"
+@attribute [Microsoft.AspNetCore.Authorization.Authorize]
+@inject IClientService ClientService
+@inject IServiceCrmService ServiceCrmService
+@inject IAppointmentService AppointmentService
+
+<PageTitle>Dashboard — SalonCRM</PageTitle>
+
+<div class="page-header">
+    <h1>Dashboard</h1>
+    <span class="text-muted">@DateTime.Now.ToString("dddd, d MMMM yyyy", new System.Globalization.CultureInfo("pl-PL"))</span>
+</div>
+
+<div class="stats-grid">
+    <div class="stat-card">
+        <div class="stat-icon">👤</div>
+        <div class="stat-value">@_clientCount</div>
+        <div class="stat-label">Klientów</div>
+    </div>
+    <div class="stat-card">
+        <div class="stat-icon">✂️</div>
+        <div class="stat-value">@_serviceCount</div>
+        <div class="stat-label">Usług</div>
+    </div>
+    <div class="stat-card accent">
+        <div class="stat-icon">📅</div>
+        <div class="stat-value">@_upcomingCount</div>
+        <div class="stat-label">Nadchodzących wizyt</div>
+    </div>
+</div>
+
+@if (_upcoming.Any())
+{
+    <div class="card mt-4">
+        <div class="card-header">Najbliższe wizyty</div>
+        <div class="card-body p-0">
+            <table class="table table-hover mb-0">
+                <thead>
+                    <tr>
+                        <th>Data</th>
+                        <th>Klient</th>
+                        <th>Usługa</th>
+                        <th class="text-end">Kwota</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach (var a in _upcoming)
+                    {
+                        <tr>
+                            <td>@a.Date.ToString("dd.MM.yyyy HH:mm")</td>
+                            <td>@a.ClientName</td>
+                            <td>@a.ServiceName</td>
+                            <td class="text-end">@a.TotalAmount.ToString("C", new System.Globalization.CultureInfo("pl-PL"))</td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        </div>
+    </div>
+}
+
+@code {
+    private int _clientCount, _serviceCount, _upcomingCount;
+    private List<AppointmentEntity> _upcoming = [];
+
+    protected override async Task OnInitializedAsync()
+    {
+        var clients = await ClientService.GetAllAsync();
+        var services = await ServiceCrmService.GetAllAsync();
+        _upcomingCount = await AppointmentService.CountUpcomingAsync();
+
+        _clientCount = clients.Count;
+        _serviceCount = services.Count;
+
+        var all = await AppointmentService.GetAllAsync();
+        _upcoming = all.Where(a => a.Date >= DateTime.Now).Take(5).ToList();
+    }
+}
