@@ -3,6 +3,7 @@
     <Project Path="src/SalonCRM.Client/SalonCRM.Client.csproj" />
     <Project Path="src/SalonCRM.Models/SalonCRM.Models.csproj" />
     <Project Path="src/SalonCRM.Server/SalonCRM.Server.csproj" />
+    <Project Path="src/SalonCRM.Web/SalonCRM.Web.csproj" />
   </Folder>
   <Folder Name="/tests/">
     <Project Path="tests/SalonCRM.Tests/SalonCRM.Tests.csproj" />

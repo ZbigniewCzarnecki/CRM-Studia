@@ -25,7 +25,7 @@
                     </div>
                     <div class="col-md-6">
                         <label class="form-label">Usługa *</label>
-                        <InputSelect @bind-Value="Appointment.ServiceName" class="form-select" @onchange="OnServiceChanged">
+                        <InputSelect @bind-Value="Appointment.ServiceName" @bind-Value:after="OnServiceChanged" class="form-select">
                             <option value="">-- wybierz usługę --</option>
                             @foreach (var s in _services)
                             {
@@ -38,9 +38,23 @@
                         <label class="form-label">Data i godzina *</label>
                         <InputDate Type="InputDateType.DateTimeLocal" @bind-Value="Appointment.Date" class="form-control" />
                     </div>
-                    <div class="col-md-6">
+                    <div class="col-md-3">
                         <label class="form-label">Kwota (PLN)</label>
                         <InputNumber @bind-Value="Appointment.TotalAmount" class="form-control" />
+                    </div>
+                    <div class="col-md-3">
+                        <label class="form-label">Status</label>
+                        <InputSelect @bind-Value="Appointment.Status" class="form-select">
+                            <option value="@AppointmentStatus.Planned">Zaplanowana</option>
+                            <option value="@AppointmentStatus.Confirmed">Potwierdzona</option>
+                            <option value="@AppointmentStatus.Completed">Zakończona</option>
+                            <option value="@AppointmentStatus.Cancelled">Anulowana</option>
+                            <option value="@AppointmentStatus.NoShow">Nieobecność</option>
+                        </InputSelect>
+                    </div>
+                    <div class="col-12">
+                        <label class="form-label">Notatki do wizyty</label>
+                        <InputTextArea @bind-Value="Appointment.Notes" class="form-control" rows="2" placeholder="Uwagi, preferencje, informacje dla pracownika..." />
                     </div>
                 </div>
             </div>
@@ -64,13 +78,20 @@
     {
         _clients = await ClientService.GetAllAsync();
         _services = await ServiceCrmService.GetAllAsync();
+
+        // Pre-fill price/duration when service is already set (e.g. click from calendar)
+        if (!string.IsNullOrEmpty(Appointment.ServiceName) && Appointment.TotalAmount == 0)
+            OnServiceChanged();
     }
 
-    private void OnServiceChanged(ChangeEventArgs e)
+    private void OnServiceChanged()
     {
-        var name = e.Value?.ToString();
-        var service = _services.FirstOrDefault(s => s.Name == name);
-        if (service != null) Appointment.TotalAmount = service.Price;
+        var service = _services.FirstOrDefault(s => s.Name == Appointment.ServiceName);
+        if (service != null)
+        {
+            Appointment.TotalAmount = service.Price;
+            Appointment.DurationMinutes = service.DurationMinutes;
+        }
     }
 
     private async Task Save()

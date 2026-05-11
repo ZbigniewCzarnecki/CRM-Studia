@@ -1,4 +1,5 @@
 @page "/services"
+@rendermode InteractiveServer
 @attribute [Microsoft.AspNetCore.Authorization.Authorize]
 @inject IServiceCrmService ServiceCrmService
 
@@ -6,7 +7,9 @@
 
 <div class="page-header">
     <h1>Usługi</h1>
-    <button class="btn btn-primary" @onclick="() => OpenForm(null)">+ Dodaj usługę</button>
+    <AuthorizeView Roles="Admin">
+        <button class="btn btn-primary" @onclick="() => OpenForm(null)">+ Dodaj usługę</button>
+    </AuthorizeView>
 </div>
 
 <div class="search-bar mb-3">
@@ -30,6 +33,7 @@ else
                 <thead>
                     <tr>
                         <th>Nazwa</th>
+                        <th>Kategoria</th>
                         <th>Czas</th>
                         <th class="text-end">Cena</th>
                         <th></th>
@@ -43,11 +47,19 @@ else
                                 <div>@s.Name</div>
                                 <small class="text-muted">@s.Description</small>
                             </td>
+                            <td>
+                                @if (!string.IsNullOrWhiteSpace(s.Category))
+                                {
+                                    <span class="badge bg-light text-dark border">@s.Category</span>
+                                }
+                            </td>
                             <td>@s.DurationMinutes min</td>
                             <td class="text-end">@s.Price.ToString("C", new System.Globalization.CultureInfo("pl-PL"))</td>
                             <td class="text-end">
-                                <button class="btn btn-sm btn-outline-primary me-1" @onclick="() => OpenForm(s)">Edytuj</button>
-                                <button class="btn btn-sm btn-outline-danger" @onclick="() => ConfirmDelete(s)">Usuń</button>
+                                <AuthorizeView Roles="Admin">
+                                    <button class="btn btn-sm btn-outline-primary me-1" @onclick="() => OpenForm(s)">Edytuj</button>
+                                    <button class="btn btn-sm btn-outline-danger" @onclick="() => ConfirmDelete(s)">Usuń</button>
+                                </AuthorizeView>
                             </td>
                         </tr>
                     }
@@ -91,7 +103,7 @@ else
     }
 
     private async Task OnSearch() => await LoadAsync();
-    private void OpenForm(ServiceEntity? s) { _editing = s == null ? new() : new() { Id = s.Id, Name = s.Name, Description = s.Description, DurationMinutes = s.DurationMinutes, Price = s.Price }; _showForm = true; }
+    private void OpenForm(ServiceEntity? s) { _editing = s == null ? new() : new() { Id = s.Id, Name = s.Name, Category = s.Category, Description = s.Description, DurationMinutes = s.DurationMinutes, Price = s.Price }; _showForm = true; }
     private void CloseForm() => _showForm = false;
     private async Task OnSaved() { _showForm = false; await LoadAsync(); }
     private void ConfirmDelete(ServiceEntity s) { _toDelete = s; _showDeleteConfirm = true; }

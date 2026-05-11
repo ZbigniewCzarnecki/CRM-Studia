@@ -11,12 +11,12 @@ public class AppointmentService : IAppointmentService
     public AppointmentService(ApplicationDbContext db) => _db = db;
 
     public Task<List<AppointmentEntity>> GetAllAsync(CancellationToken ct = default) =>
-        _db.Appointments.OrderBy(a => a.Date).ToListAsync(ct);
+        _db.Appointments.AsNoTracking().OrderBy(a => a.Date).ToListAsync(ct);
 
     public Task<List<AppointmentEntity>> SearchAsync(string query, DateTime? from, DateTime? to, CancellationToken ct = default)
     {
         var q = query.Trim().ToLower();
-        var result = _db.Appointments.AsQueryable();
+        var result = _db.Appointments.AsNoTracking().AsQueryable();
 
         if (!string.IsNullOrWhiteSpace(query))
             result = result.Where(a => a.ClientName.ToLower().Contains(q) || a.ServiceName.ToLower().Contains(q));
@@ -37,11 +37,17 @@ public class AppointmentService : IAppointmentService
         return appt;
     }
 
-    public async Task UpdateAsync(AppointmentEntity appt, CancellationToken ct = default)
-    {
-        _db.Appointments.Update(appt);
-        await _db.SaveChangesAsync(ct);
-    }
+    public Task UpdateAsync(AppointmentEntity appt, CancellationToken ct = default) =>
+        _db.Appointments
+            .Where(a => a.Id == appt.Id)
+            .ExecuteUpdateAsync(s => s
+                .SetProperty(a => a.ClientName, appt.ClientName)
+                .SetProperty(a => a.ServiceName, appt.ServiceName)
+                .SetProperty(a => a.Date, appt.Date)
+                .SetProperty(a => a.TotalAmount, appt.TotalAmount)
+                .SetProperty(a => a.DurationMinutes, appt.DurationMinutes)
+                .SetProperty(a => a.Status, appt.Status)
+                .SetProperty(a => a.Notes, appt.Notes), ct);
 
     public async Task DeleteAsync(int id, CancellationToken ct = default)
     {
@@ -55,4 +61,21 @@ public class AppointmentService : IAppointmentService
 
     public Task<int> CountUpcomingAsync(CancellationToken ct = default) =>
         _db.Appointments.CountAsync(a => a.Date >= DateTime.Now, ct);
+
+    public Task<List<AppointmentEntity>> GetByDateAsync(DateTime date, CancellationToken ct = default) =>
+        _db.Appointments.AsNoTracking()
+            .Where(a => a.Date.Date == date.Date)
+            .OrderBy(a => a.Date)
+            .ToListAsync(ct);
+
+    public Task UpdateStatusAsync(int id, AppointmentStatus status, CancellationToken ct = default) =>
+        _db.Appointments
+            .Where(a => a.Id == id)
+            .ExecuteUpdateAsync(s => s.SetProperty(a => a.Status, status), ct);
+
+    public Task<decimal> GetRevenueAsync(DateTime from, DateTime to, CancellationToken ct = default) =>
+        _db.Appointments
+            .Where(a => a.Status == AppointmentStatus.Completed && a.Date >= from && a.Date <= to)
+            .SumAsync(a => (decimal?)a.TotalAmount, ct)
+            .ContinueWith(t => t.Result ?? 0m);
 }

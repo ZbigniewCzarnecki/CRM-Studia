@@ -19,14 +19,16 @@ html, body {
 
 .sidebar {
     width: var(--sidebar-width);
+    min-width: var(--sidebar-width);
     background: var(--salon-dark);
     color: white;
     display: flex;
     flex-direction: column;
-    position: fixed;
-    top: 0; left: 0;
+    position: sticky;
+    top: 0;
     height: 100vh;
     z-index: 100;
+    flex-shrink: 0;
 }
 
 .sidebar-brand {
@@ -77,8 +79,8 @@ html, body {
 .btn-logout:hover { border-color: var(--salon-pink); color: var(--salon-pink); }
 
 .main-content {
-    margin-left: var(--sidebar-width);
     flex: 1;
+    min-width: 0;
     padding: 2rem;
     background: #f8f9fa;
     min-height: 100vh;
@@ -190,3 +192,178 @@ html, body {
     .main-content { margin-left: 0; padding: 1rem; }
     .stats-grid { grid-template-columns: 1fr; }
 }
+
+/* === Kalendarz === */
+.calendar-nav {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+}
+.calendar-date-label {
+    font-size: 1rem;
+    font-weight: 600;
+    min-width: 260px;
+    text-align: center;
+    color: var(--salon-dark);
+}
+
+.cal-wrapper {
+    border: 1px solid #dee2e6;
+    border-radius: 8px;
+    overflow-x: auto;
+    background: white;
+}
+
+.cal-header-row {
+    display: flex;
+    background: #f8f9fa;
+    border-bottom: 2px solid #dee2e6;
+    position: sticky;
+    top: 0;
+    z-index: 10;
+    min-width: max-content;
+}
+
+.cal-label-col {
+    min-width: 160px;
+    width: 160px;
+    padding: 0.5rem 0.75rem;
+    font-weight: 600;
+    font-size: 0.85rem;
+    border-right: 2px solid #dee2e6;
+    background: #f8f9fa;
+    display: flex;
+    align-items: center;
+    position: sticky;
+    left: 0;
+    z-index: 5;
+}
+
+.cal-hour-cell {
+    min-width: 80px;
+    width: 80px;
+    padding: 0.4rem 0.25rem;
+    font-size: 0.75rem;
+    color: #6c757d;
+    border-right: 1px solid #dee2e6;
+    text-align: left;
+}
+.cal-hour-full { font-weight: 600; }
+.cal-hour-half { border-right-style: dashed; }
+
+.cal-row {
+    display: flex;
+    border-bottom: 1px solid #dee2e6;
+    min-height: 64px;
+    min-width: max-content;
+}
+.cal-row:last-child { border-bottom: none; }
+
+.cal-row .cal-label-col {
+    background: white;
+    color: var(--salon-dark);
+    border-right: 2px solid #dee2e6;
+    font-size: 0.85rem;
+}
+
+.cal-grid-area {
+    flex: 1;
+    position: relative;
+    display: flex;
+    cursor: pointer;
+    overflow: visible;
+}
+.cal-grid-area:hover { background: rgba(233,30,140,0.03); }
+
+.cal-slot {
+    min-width: 80px;
+    width: 80px;
+    height: 64px;
+    border-right: 1px dashed #dee2e6;
+    flex-shrink: 0;
+}
+.cal-slot.cal-slot-full { border-right-color: #c8cbd0; border-right-style: solid; }
+
+.cal-appointment {
+    position: absolute;
+    top: 2px;
+    height: 60px;
+    border-radius: 5px;
+    padding: 4px 6px;
+    color: white;
+    font-size: 0.75rem;
+    cursor: pointer;
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.2);
+    transition: filter 0.15s;
+    z-index: 2;
+}
+.cal-appointment:hover { filter: brightness(0.9); }
+.cal-appt-name { font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.cal-appt-time { opacity: 0.85; font-size: 0.7rem; }
+
+.cal-planned    { background: #4a90e2; }
+.cal-confirmed  { background: #27ae60; }
+.cal-completed  { background: #95a5a6; }
+.cal-cancelled  { background: #e74c3c; }
+.cal-noshow     { background: #f39c12; }
+
+/* === Status badge (tabela wizyt) === */
+.status-badge {
+    display: inline-block;
+    padding: 2px 8px;
+    border-radius: 12px;
+    font-size: 0.75rem;
+    font-weight: 600;
+    white-space: nowrap;
+}
+.status-planned   { background: #dbeafe; color: #1d4ed8; }
+.status-confirmed { background: #dcfce7; color: #15803d; }
+.status-completed { background: #f1f5f9; color: #475569; }
+.status-cancelled { background: #fee2e2; color: #b91c1c; }
+.status-noshow    { background: #fef3c7; color: #92400e; }
+
+/* === Stats grid — 3 kolumny → 6 kart === */
+.stats-grid { grid-template-columns: repeat(3, 1fr); }
+@media (max-width: 768px) { .stats-grid { grid-template-columns: repeat(2, 1fr); } }
+
+.stat-card.stat-green .stat-value { color: #15803d; }
+.stat-card.stat-green .stat-icon  { background: #dcfce7; }
+
+/* === Mały przycisk szybkiej zmiany statusu === */
+.btn-xs {
+    padding: 1px 6px;
+    font-size: 0.7rem;
+    line-height: 1.4;
+    border-radius: 3px;
+    border: none;
+    cursor: pointer;
+    font-weight: 700;
+}
+.btn-xs.btn-success { background: #15803d; color: white; }
+.btn-xs.btn-danger  { background: #b91c1c; color: white; }
+.btn-xs:hover { opacity: 0.85; }
+
+/* === Poprawka: status-completed zielony === */
+.status-completed { background: #dcfce7 !important; color: #15803d !important; }
+
+/* === Szybka zmiana statusu — nie przesuwa layoutu === */
+.status-cell { white-space: nowrap; min-width: 200px; }
+.quick-actions { display: inline-flex; gap: 3px; margin-left: 6px; vertical-align: middle; }
+
+.btn-qs {
+    padding: 2px 7px;
+    font-size: 0.7rem;
+    font-weight: 700;
+    border: none;
+    border-radius: 3px;
+    cursor: pointer;
+    line-height: 1.5;
+}
+.btn-qs-success { background: #15803d; color: white; }
+.btn-qs-danger  { background: #b91c1c; color: white; }
+.btn-qs-warning { background: #92400e; color: white; }
+.btn-qs:hover   { opacity: 0.8; }

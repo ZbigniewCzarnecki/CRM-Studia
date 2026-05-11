@@ -11,12 +11,12 @@ public class ClientService : IClientService
     public ClientService(ApplicationDbContext db) => _db = db;
 
     public Task<List<ClientEntity>> GetAllAsync(CancellationToken ct = default) =>
-        _db.Clients.OrderBy(c => c.LastName).ThenBy(c => c.FirstName).ToListAsync(ct);
+        _db.Clients.AsNoTracking().OrderBy(c => c.LastName).ThenBy(c => c.FirstName).ToListAsync(ct);
 
     public Task<List<ClientEntity>> SearchAsync(string query, CancellationToken ct = default)
     {
         var q = query.Trim().ToLower();
-        return _db.Clients
+        return _db.Clients.AsNoTracking()
             .Where(c => c.LastName.ToLower().Contains(q)
                      || c.FirstName.ToLower().Contains(q)
                      || c.Email.ToLower().Contains(q)
@@ -35,11 +35,15 @@ public class ClientService : IClientService
         return client;
     }
 
-    public async Task UpdateAsync(ClientEntity client, CancellationToken ct = default)
-    {
-        _db.Clients.Update(client);
-        await _db.SaveChangesAsync(ct);
-    }
+    public Task UpdateAsync(ClientEntity client, CancellationToken ct = default) =>
+        _db.Clients
+            .Where(c => c.Id == client.Id)
+            .ExecuteUpdateAsync(s => s
+                .SetProperty(c => c.FirstName, client.FirstName)
+                .SetProperty(c => c.LastName, client.LastName)
+                .SetProperty(c => c.PhoneNumber, client.PhoneNumber)
+                .SetProperty(c => c.Email, client.Email)
+                .SetProperty(c => c.Notes, client.Notes), ct);
 
     public async Task DeleteAsync(int id, CancellationToken ct = default)
     {

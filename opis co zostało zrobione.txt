@@ -62,6 +62,54 @@ E2E/ — 5 testów (prawdziwy serwer TCP na losowym porcie):
 38/38 testów zielonych
 5 commitów w git
 
+--- Etap 6: Frontend webowy (src/SalonCRM.Web/) — Blazor Server .NET 8 ---
+
+Architektura:
+- ASP.NET Core Identity + EF Core SQLite (salon.db)
+- Blazor Server z rendermode InteractiveServer
+- Seed admina przy starcie (admin@salon.pl / Admin@123, konfigurowalny w appsettings.json)
+- Dwie role: Admin (pełny dostęp) i Staff (ograniczony)
+
+Autentykacja:
+- Login.razor — plain HTML form POST do /auth/login (nie Blazor EditForm — SSR nie odpalałoby C# handlerów)
+- /auth/login endpoint w Program.cs — ReadFormAsync() + SignInManager.PasswordSignInAsync
+- /logout endpoint — SignOutAsync + redirect
+- Sesja 8h ze sliding expiration, cookie auth
+
+Encje bazy danych (EF Core + SQLite):
+- ClientEntity    — Id, FirstName, LastName, PhoneNumber, Email, Notes
+- ServiceEntity   — Id, Name, Description, DurationMinutes, Price, Category
+- AppointmentEntity — Id, ClientName, ServiceName, Date, TotalAmount, DurationMinutes, Status, Notes
+- AppointmentStatus enum — Planned, Confirmed, Completed, Cancelled, NoShow
+- 2 migracje EF Core: InitialCreate + CalendarAndRoleFeatures
+
+Serwisy (Scoped DI):
+- ClientService, ServiceCrmService, AppointmentService
+- Wszystkie odczyty: AsNoTracking() — brak konfliktów trackera w długotrwałych sesjach Blazor
+- Wszystkie zapisy (UpdateAsync): ExecuteUpdateAsync (bulk SQL UPDATE) — całkowicie omija change tracker
+- AppointmentService: GetByDateAsync, UpdateStatusAsync, GetRevenueAsync
+
+Strony i funkcjonalności:
+- Dashboard (/)         — 6 kart: Klienci / Usługi / Nadchodzące wizyty / Przychód dziś / Przychód miesiąc / Zrealizowane w miesiącu
+- Kalendarz (/calendar) — siatka CSS (Y=kategorie usług, X=godziny 08:00–20:00 co 30 min)
+                          Wizyty jako absolutnie pozycjonowane bloki, szerokość = czas trwania
+                          Klik na komórkę → formularz wizyty pre-filled z usługą i godziną
+                          Nawigacja dni (‹ / › / Dziś)
+- Klienci (/clients)    — tabela + live search; notatki per klient (pole Notes — alergie, preferencje)
+                          Admin: Dodaj/Edytuj/Usuń | Staff: tylko Notatki
+- Usługi (/services)    — tabela + kategoria usługi; Admin: CRUD | Staff: read-only
+- Wizyty (/appointments)— tabela z filtrem (klient/usługa/data od-do); status badge z kolorami
+                          Szybka zmiana statusu: gdy wizyta Zaplanowana i czas minął → przyciski ✓ ✕ ?
+                          Admin: Usuń | Staff: tworzy i edytuje
+- Użytkownicy (/users)  — lista wszystkich kont z rolami i statusem (aktywny/zablokowany)
+                          Zmiana roli inline, blokowanie/odblokowywanie kont
+                          Panel dodawania nowego użytkownika (Admin only)
+
+Layout i styl:
+- Sidebar 240px (sticky, nie fixed — flexbox), różowo-ciemny motyw (#e91e8c)
+- Kolory statusów wizyt: niebieski/zielony/szary/czerwony/pomarańczowy
+- Status badge w tabelach, status bloki w kalendarzu
+
 == PROBLEMY NAPOTKANE I ROZWIĄZANIA ==
 
 1. Kolizja namespace: SalonCRM.Client (projekt) vs Client (klasa z Models)
@@ -75,6 +123,24 @@ E2E/ — 5 testów (prawdziwy serwer TCP na losowym porcie):
 3. Standardowy JsonSerializer.Deserialize nie rzuca wyjątku przy niezgodnych polach JSON
    → Rozwiązanie: [JsonRequired] na pole Pet.PetName — gdy JSON zawiera obiekty Service (bez PetName),
      deserializacja jako List<Pet> rzuca JsonException
+
+4. Login Blazor nie działał (hasło/email nie logowały)
+   → Przyczyna: Login.razor bez @rendermode działał w trybie SSR — handlery C# nigdy nie były wywoływane
+   → Rozwiązanie: Login jako plain HTML form POST → /auth/login endpoint w Program.cs (ReadFormAsync)
+   → Wszystkie strony CRM otrzymały @rendermode InteractiveServer
+
+5. EF Core change tracker conflict w Blazor Server
+   → Przyczyna: DbContext żyje przez całą sesję SignalR; _db.Update() konflikuje gdy ta sama encja
+     była już śledzona wcześniej w sesji
+   → Rozwiązanie: AsNoTracking() na wszystkich odczytach + ExecuteUpdateAsync na wszystkich zapisach
+     (całkowite ominięcie change trackera)
+
+6. Kwota wizyty = 0 zł
+   → Przyczyna: @bind-Value i @onchange razem na InputSelect w Blazor generują dwa konflikujące handlery
+   → Rozwiązanie: @bind-Value:after="OnServiceChanged" + inicjalizacja ceny w OnInitializedAsync
+
+7. Layout przycisków szybkiej zmiany statusu przesuwał kolumny
+   → Rozwiązanie: visibility: hidden zamiast @if — przyciski zawsze zajmują miejsce w DOM
 
 == DO UZUPEŁNIENIA PRZED ODDANIEM ==
 - README.md → skład zespołu

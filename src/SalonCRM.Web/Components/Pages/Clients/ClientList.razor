@@ -1,4 +1,5 @@
 @page "/clients"
+@rendermode InteractiveServer
 @attribute [Microsoft.AspNetCore.Authorization.Authorize]
 @inject IClientService ClientService
 
@@ -6,7 +7,9 @@
 
 <div class="page-header">
     <h1>Klienci</h1>
-    <button class="btn btn-primary" @onclick="() => OpenForm(null)">+ Dodaj klienta</button>
+    <AuthorizeView Roles="Admin">
+        <button class="btn btn-primary" @onclick="() => OpenForm(null)">+ Dodaj klienta</button>
+    </AuthorizeView>
 </div>
 
 <div class="search-bar mb-3">
@@ -39,12 +42,23 @@ else
                     @foreach (var c in _clients)
                     {
                         <tr>
-                            <td>@c.FirstName @c.LastName</td>
+                            <td>
+                                <div>@c.FirstName @c.LastName</div>
+                                @if (!string.IsNullOrWhiteSpace(c.Notes))
+                                {
+                                    <small class="text-muted" title="@c.Notes">📝 @(c.Notes.Length > 50 ? c.Notes[..50] + "…" : c.Notes)</small>
+                                }
+                            </td>
                             <td>@c.PhoneNumber</td>
                             <td>@c.Email</td>
                             <td class="text-end">
-                                <button class="btn btn-sm btn-outline-primary me-1" @onclick="() => OpenForm(c)">Edytuj</button>
-                                <button class="btn btn-sm btn-outline-danger" @onclick="() => ConfirmDelete(c)">Usuń</button>
+                                <AuthorizeView Roles="Admin">
+                                    <button class="btn btn-sm btn-outline-primary me-1" @onclick="() => OpenForm(c)">Edytuj</button>
+                                </AuthorizeView>
+                                <button class="btn btn-sm btn-outline-secondary me-1" @onclick="() => OpenNotes(c)">Notatki</button>
+                                <AuthorizeView Roles="Admin">
+                                    <button class="btn btn-sm btn-outline-danger" @onclick="() => ConfirmDelete(c)">Usuń</button>
+                                </AuthorizeView>
                             </td>
                         </tr>
                     }
@@ -57,6 +71,26 @@ else
 @if (_showForm)
 {
     <ClientForm Client="_editing" OnSaved="OnSaved" OnCancelled="CloseForm" />
+}
+
+@if (_showNotes && _notesClient != null)
+{
+    <div class="modal-backdrop">
+        <div class="modal-dialog-custom">
+            <div class="modal-header-custom">
+                <h5>Notatki — @_notesClient.FirstName @_notesClient.LastName</h5>
+                <button class="btn-close" @onclick="CloseNotes"></button>
+            </div>
+            <div class="modal-body-custom">
+                <textarea class="form-control" rows="6" @bind="_notesText"
+                          placeholder="Alergie, preferencje, uwagi medyczne..."></textarea>
+            </div>
+            <div class="modal-footer-custom">
+                <button class="btn btn-primary" @onclick="SaveNotes">Zapisz notatki</button>
+                <button class="btn btn-secondary ms-2" @onclick="CloseNotes">Anuluj</button>
+            </div>
+        </div>
+    </div>
 }
 
 @if (_showDeleteConfirm && _toDelete != null)
@@ -76,8 +110,11 @@ else
     private bool _loading = true;
     private bool _showForm;
     private bool _showDeleteConfirm;
+    private bool _showNotes;
     private ClientEntity? _editing;
     private ClientEntity? _toDelete;
+    private ClientEntity? _notesClient;
+    private string _notesText = string.Empty;
 
     protected override async Task OnInitializedAsync() => await LoadAsync();
 
@@ -97,25 +134,40 @@ else
         _editing = client == null ? new ClientEntity() : new ClientEntity
         {
             Id = client.Id, FirstName = client.FirstName, LastName = client.LastName,
-            PhoneNumber = client.PhoneNumber, Email = client.Email
+            PhoneNumber = client.PhoneNumber, Email = client.Email, Notes = client.Notes
         };
         _showForm = true;
     }
 
-    private void CloseForm() => _showForm = false;
-
-    private async Task OnSaved()
+    private void OpenNotes(ClientEntity c)
     {
-        _showForm = false;
+        _notesClient = c;
+        _notesText = c.Notes;
+        _showNotes = true;
+    }
+
+    private void CloseNotes() { _showNotes = false; _notesClient = null; }
+
+    private async Task SaveNotes()
+    {
+        if (_notesClient == null) return;
+        var updated = new ClientEntity
+        {
+            Id = _notesClient.Id, FirstName = _notesClient.FirstName, LastName = _notesClient.LastName,
+            PhoneNumber = _notesClient.PhoneNumber, Email = _notesClient.Email, Notes = _notesText
+        };
+        await ClientService.UpdateAsync(updated);
+        _showNotes = false;
+        _notesClient = null;
         await LoadAsync();
     }
 
+    private void CloseForm() => _showForm = false;
+    private async Task OnSaved() { _showForm = false; await LoadAsync(); }
     private void ConfirmDelete(ClientEntity c) { _toDelete = c; _showDeleteConfirm = true; }
-
     private async Task ExecuteDelete()
     {
-        if (_toDelete != null)
-            await ClientService.DeleteAsync(_toDelete.Id);
+        if (_toDelete != null) await ClientService.DeleteAsync(_toDelete.Id);
         _showDeleteConfirm = false;
         await LoadAsync();
     }

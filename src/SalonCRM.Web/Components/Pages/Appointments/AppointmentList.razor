@@ -1,4 +1,5 @@
 @page "/appointments"
+@rendermode InteractiveServer
 @attribute [Microsoft.AspNetCore.Authorization.Authorize]
 @inject IAppointmentService AppointmentService
 
@@ -43,6 +44,7 @@ else
                         <th>Data</th>
                         <th>Klient</th>
                         <th>Usługa</th>
+                        <th>Status</th>
                         <th class="text-end">Kwota</th>
                         <th></th>
                     </tr>
@@ -50,14 +52,28 @@ else
                 <tbody>
                     @foreach (var a in _appointments)
                     {
-                        <tr class="@(a.Date < DateTime.Now ? "text-muted" : "")">
+                        var isPastPlanned = a.Date < DateTime.Now && a.Status == AppointmentStatus.Planned;
+                        <tr>
                             <td>@a.Date.ToString("dd.MM.yyyy HH:mm")</td>
                             <td>@a.ClientName</td>
                             <td>@a.ServiceName</td>
+                            <td class="status-cell">
+                                <span class="status-badge status-@a.Status.ToString().ToLower()">@StatusLabel(a.Status)</span>
+                                <span class="quick-actions" style="visibility: @(isPastPlanned ? "visible" : "hidden")">
+                                    <button class="btn-xs btn-qs btn-qs-success" title="Zrealizowana"
+                                            @onclick="() => QuickStatus(a, AppointmentStatus.Completed)">✓</button>
+                                    <button class="btn-xs btn-qs btn-qs-danger" title="Anulowana"
+                                            @onclick="() => QuickStatus(a, AppointmentStatus.Cancelled)">✕</button>
+                                    <button class="btn-xs btn-qs btn-qs-warning" title="Nieobecność"
+                                            @onclick="() => QuickStatus(a, AppointmentStatus.NoShow)">?</button>
+                                </span>
+                            </td>
                             <td class="text-end">@a.TotalAmount.ToString("C", new System.Globalization.CultureInfo("pl-PL"))</td>
                             <td class="text-end">
                                 <button class="btn btn-sm btn-outline-primary me-1" @onclick="() => OpenForm(a)">Edytuj</button>
-                                <button class="btn btn-sm btn-outline-danger" @onclick="() => ConfirmDelete(a)">Usuń</button>
+                                <AuthorizeView Roles="Admin">
+                                    <button class="btn btn-sm btn-outline-danger" @onclick="() => ConfirmDelete(a)">Usuń</button>
+                                </AuthorizeView>
                             </td>
                         </tr>
                     }
@@ -104,8 +120,9 @@ else
 
     private void OpenForm(AppointmentEntity? a)
     {
-        _editing = a == null ? new() { Date = DateTime.Now.AddDays(1).Date.AddHours(10) }
-            : new() { Id = a.Id, ClientName = a.ClientName, ServiceName = a.ServiceName, Date = a.Date, TotalAmount = a.TotalAmount };
+        _editing = a == null
+            ? new() { Date = DateTime.Now.AddDays(1).Date.AddHours(10) }
+            : new() { Id = a.Id, ClientName = a.ClientName, ServiceName = a.ServiceName, Date = a.Date, TotalAmount = a.TotalAmount, DurationMinutes = a.DurationMinutes, Status = a.Status, Notes = a.Notes };
         _showForm = true;
     }
 
@@ -113,4 +130,20 @@ else
     private async Task OnSaved() { _showForm = false; await LoadAsync(); }
     private void ConfirmDelete(AppointmentEntity a) { _toDelete = a; _showDeleteConfirm = true; }
     private async Task ExecuteDelete() { if (_toDelete != null) await AppointmentService.DeleteAsync(_toDelete.Id); _showDeleteConfirm = false; await LoadAsync(); }
+
+    private async Task QuickStatus(AppointmentEntity a, AppointmentStatus status)
+    {
+        await AppointmentService.UpdateStatusAsync(a.Id, status);
+        await LoadAsync();
+    }
+
+    private static string StatusLabel(AppointmentStatus s) => s switch
+    {
+        AppointmentStatus.Planned => "Zaplanowana",
+        AppointmentStatus.Confirmed => "Potwierdzona",
+        AppointmentStatus.Completed => "Zakończona",
+        AppointmentStatus.Cancelled => "Anulowana",
+        AppointmentStatus.NoShow => "Nieobecność",
+        _ => s.ToString()
+    };
 }

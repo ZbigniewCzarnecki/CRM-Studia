@@ -17,4 +17,7 @@ public class ClientEntity
 
     [Required, EmailAddress, MaxLength(200)]
     public string Email { get; set; } = string.Empty;
+
+    [MaxLength(2000)]
+    public string Notes { get; set; } = string.Empty;
 }

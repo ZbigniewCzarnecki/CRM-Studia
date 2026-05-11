@@ -1,4 +1,5 @@
 @page "/"
+@rendermode InteractiveServer
 @attribute [Microsoft.AspNetCore.Authorization.Authorize]
 @inject IClientService ClientService
 @inject IServiceCrmService ServiceCrmService
@@ -26,6 +27,21 @@
         <div class="stat-icon">📅</div>
         <div class="stat-value">@_upcomingCount</div>
         <div class="stat-label">Nadchodzących wizyt</div>
+    </div>
+    <div class="stat-card stat-green">
+        <div class="stat-icon">💰</div>
+        <div class="stat-value">@_revenueToday.ToString("C0", new System.Globalization.CultureInfo("pl-PL"))</div>
+        <div class="stat-label">Przychód dziś</div>
+    </div>
+    <div class="stat-card stat-green">
+        <div class="stat-icon">📈</div>
+        <div class="stat-value">@_revenueMonth.ToString("C0", new System.Globalization.CultureInfo("pl-PL"))</div>
+        <div class="stat-label">Przychód w miesiącu</div>
+    </div>
+    <div class="stat-card">
+        <div class="stat-icon">✅</div>
+        <div class="stat-value">@_completedMonth</div>
+        <div class="stat-label">Zrealizowanych w miesiącu</div>
     </div>
 </div>
 
@@ -60,19 +76,35 @@
 }
 
 @code {
-    private int _clientCount, _serviceCount, _upcomingCount;
+    private int _clientCount, _serviceCount, _upcomingCount, _completedMonth;
+    private decimal _revenueToday, _revenueMonth;
     private List<AppointmentEntity> _upcoming = [];
 
     protected override async Task OnInitializedAsync()
     {
-        var clients = await ClientService.GetAllAsync();
-        var services = await ServiceCrmService.GetAllAsync();
-        _upcomingCount = await AppointmentService.CountUpcomingAsync();
+        var now = DateTime.Now;
+        var todayStart = now.Date;
+        var todayEnd = todayStart.AddDays(1).AddTicks(-1);
+        var monthStart = new DateTime(now.Year, now.Month, 1);
+        var monthEnd = monthStart.AddMonths(1).AddTicks(-1);
 
-        _clientCount = clients.Count;
-        _serviceCount = services.Count;
+        var clientsTask = ClientService.GetAllAsync();
+        var servicesTask = ServiceCrmService.GetAllAsync();
+        var upcomingCountTask = AppointmentService.CountUpcomingAsync();
+        var revTodayTask = AppointmentService.GetRevenueAsync(todayStart, todayEnd);
+        var revMonthTask = AppointmentService.GetRevenueAsync(monthStart, monthEnd);
+        var allTask = AppointmentService.GetAllAsync();
 
-        var all = await AppointmentService.GetAllAsync();
-        _upcoming = all.Where(a => a.Date >= DateTime.Now).Take(5).ToList();
+        await Task.WhenAll(clientsTask, servicesTask, upcomingCountTask, revTodayTask, revMonthTask, allTask);
+
+        _clientCount = clientsTask.Result.Count;
+        _serviceCount = servicesTask.Result.Count;
+        _upcomingCount = upcomingCountTask.Result;
+        _revenueToday = revTodayTask.Result;
+        _revenueMonth = revMonthTask.Result;
+
+        var all = allTask.Result;
+        _upcoming = all.Where(a => a.Date >= now).OrderBy(a => a.Date).Take(5).ToList();
+        _completedMonth = all.Count(a => a.Status == AppointmentStatus.Completed && a.Date >= monthStart && a.Date <= monthEnd);
     }
 }

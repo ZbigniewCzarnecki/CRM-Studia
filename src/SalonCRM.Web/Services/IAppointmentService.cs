@@ -11,4 +11,7 @@ public interface IAppointmentService
     Task UpdateAsync(AppointmentEntity appt, CancellationToken ct = default);
     Task DeleteAsync(int id, CancellationToken ct = default);
     Task<int> CountUpcomingAsync(CancellationToken ct = default);
+    Task<List<AppointmentEntity>> GetByDateAsync(DateTime date, CancellationToken ct = default);
+    Task UpdateStatusAsync(int id, AppointmentStatus status, CancellationToken ct = default);
+    Task<decimal> GetRevenueAsync(DateTime from, DateTime to, CancellationToken ct = default);
 }

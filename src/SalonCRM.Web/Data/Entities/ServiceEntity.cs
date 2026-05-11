@@ -17,4 +17,7 @@ public class ServiceEntity
 
     [Range(0.01, 10000)]
     public decimal Price { get; set; }
+
+    [MaxLength(100)]
+    public string Category { get; set; } = string.Empty;
 }

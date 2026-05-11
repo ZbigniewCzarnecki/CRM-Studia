@@ -16,4 +16,11 @@ public class AppointmentEntity
 
     [Range(0, 100000)]
     public decimal TotalAmount { get; set; }
+
+    public int DurationMinutes { get; set; } = 60;
+
+    public AppointmentStatus Status { get; set; } = AppointmentStatus.Planned;
+
+    [MaxLength(2000)]
+    public string Notes { get; set; } = string.Empty;
 }

@@ -1,0 +1,176 @@
+@page "/calendar"
+@rendermode InteractiveServer
+@attribute [Microsoft.AspNetCore.Authorization.Authorize]
+@using SalonCRM.Web.Components.Pages.Appointments
+@inject IAppointmentService AppointmentService
+@inject IServiceCrmService ServiceCrmService
+
+<PageTitle>Kalendarz — SalonCRM</PageTitle>
+
+<div class="page-header">
+    <h1>Kalendarz</h1>
+    <div class="calendar-nav">
+        <button class="btn btn-outline-secondary btn-sm" @onclick="PrevDay">&#8249;</button>
+        <span class="calendar-date-label">@_selectedDate.ToString("dddd, d MMMM yyyy", new System.Globalization.CultureInfo("pl-PL"))</span>
+        <button class="btn btn-outline-secondary btn-sm" @onclick="NextDay">&#8250;</button>
+        <button class="btn btn-outline-primary btn-sm ms-2" @onclick="GoToday">Dziś</button>
+    </div>
+</div>
+
+@if (_loading)
+{
+    <div class="text-center py-4"><span class="spinner-border text-primary"></span></div>
+}
+else if (!_rows.Any())
+{
+    <div class="empty-state">Brak usług w systemie. <a href="/services">Dodaj usługi</a>, aby zobaczyć kalendarz.</div>
+}
+else
+{
+    <div class="cal-wrapper">
+        <!-- Nagłówek godzin -->
+        <div class="cal-header-row">
+            <div class="cal-label-col"></div>
+            @for (int slot = 0; slot < TotalSlots; slot++)
+            {
+                var h = StartHour + slot / 2;
+                var m = (slot % 2) * 30;
+                <div class="cal-hour-cell @(m == 0 ? "cal-hour-full" : "cal-hour-half")">
+                    @if (m == 0) { <span>@h.ToString("D2"):00</span> }
+                </div>
+            }
+        </div>
+
+        <!-- Wiersze usług -->
+        @for (int rowIdx = 0; rowIdx < _rows.Count; rowIdx++)
+        {
+            var row = _rows[rowIdx];
+            var rowAppts = _appointments.Where(a => MatchesRow(a, row)).ToList();
+            var localRowIdx = rowIdx;
+
+            <div class="cal-row">
+                <div class="cal-label-col">@row</div>
+                <div class="cal-grid-area" @onclick="e => OnGridClick(e, row)">
+                    @for (int slot = 0; slot < TotalSlots; slot++)
+                    {
+                        <div class="cal-slot @(slot % 2 == 0 ? "cal-slot-full" : "")"></div>
+                    }
+                    @foreach (var appt in rowAppts)
+                    {
+                        var left = CalcLeft(appt.Date);
+                        var width = CalcWidth(appt.DurationMinutes);
+                        var statusCss = appt.Status.ToString().ToLower();
+                        var localAppt = appt;
+                        <div class="cal-appointment cal-@statusCss"
+                             style="left:@(left)px; width:@(width)px;"
+                             title="@appt.ClientName — @appt.ServiceName (@appt.Date.ToString("HH:mm")), @appt.DurationMinutes min"
+                             @onclick:stopPropagation="true"
+                             @onclick="() => EditAppointment(localAppt)">
+                            <span class="cal-appt-name">@appt.ClientName</span>
+                            <span class="cal-appt-time">@appt.Date.ToString("HH:mm")</span>
+                        </div>
+                    }
+                </div>
+            </div>
+        }
+    </div>
+}
+
+@if (_showForm && _editing != null)
+{
+    <AppointmentForm Appointment="_editing" OnSaved="OnSaved" OnCancelled="CloseForm" />
+}
+
+@code {
+    private const int StartHour = 8;
+    private const int EndHour = 20;
+    private const int TotalSlots = (EndHour - StartHour) * 2;
+    private const int SlotWidth = 80;
+    private const int LabelColWidth = 160;
+
+    private DateTime _selectedDate = DateTime.Today;
+    private List<AppointmentEntity> _appointments = [];
+    private List<string> _rows = [];
+    private List<ServiceEntity> _services = [];
+    private bool _loading = true;
+    private bool _showForm;
+    private AppointmentEntity? _editing;
+
+    protected override async Task OnInitializedAsync() => await LoadAsync();
+
+    private async Task LoadAsync()
+    {
+        _loading = true;
+        _services = await ServiceCrmService.GetAllAsync();
+        _rows = _services
+            .Select(s => string.IsNullOrWhiteSpace(s.Category) ? s.Name : s.Category)
+            .Distinct()
+            .OrderBy(r => r)
+            .ToList();
+        _appointments = await AppointmentService.GetByDateAsync(_selectedDate);
+        _loading = false;
+    }
+
+    private bool MatchesRow(AppointmentEntity a, string row)
+    {
+        var service = _services.FirstOrDefault(s => s.Name == a.ServiceName);
+        if (service == null) return false;
+        var serviceRow = string.IsNullOrWhiteSpace(service.Category) ? service.Name : service.Category;
+        return serviceRow == row;
+    }
+
+    private double CalcLeft(DateTime date)
+    {
+        var minutesFromStart = (date.Hour - StartHour) * 60 + date.Minute;
+        return minutesFromStart / 30.0 * SlotWidth;
+    }
+
+    private double CalcWidth(int durationMinutes)
+    {
+        var dur = Math.Max(durationMinutes, 30);
+        return dur / 30.0 * SlotWidth - 4;
+    }
+
+    private async Task PrevDay() { _selectedDate = _selectedDate.AddDays(-1); await LoadAsync(); }
+    private async Task NextDay() { _selectedDate = _selectedDate.AddDays(1); await LoadAsync(); }
+    private async Task GoToday() { _selectedDate = DateTime.Today; await LoadAsync(); }
+
+    private void OnGridClick(MouseEventArgs e, string row)
+    {
+        var minutesFromStart = (int)(e.OffsetX / SlotWidth) * 30;
+        var hour = StartHour + minutesFromStart / 60;
+        var minute = minutesFromStart % 60;
+        var clickedTime = _selectedDate.Date.AddHours(hour).AddMinutes(minute);
+
+        var service = _services.FirstOrDefault(s =>
+            (string.IsNullOrWhiteSpace(s.Category) ? s.Name : s.Category) == row);
+
+        _editing = new AppointmentEntity
+        {
+            Date = clickedTime,
+            ServiceName = service?.Name ?? "",
+            DurationMinutes = service?.DurationMinutes ?? 60,
+            TotalAmount = service?.Price ?? 0
+        };
+        _showForm = true;
+    }
+
+    private void EditAppointment(AppointmentEntity a)
+    {
+        _editing = new AppointmentEntity
+        {
+            Id = a.Id,
+            ClientName = a.ClientName,
+            ServiceName = a.ServiceName,
+            Date = a.Date,
+            TotalAmount = a.TotalAmount,
+            DurationMinutes = a.DurationMinutes,
+            Status = a.Status,
+            Notes = a.Notes
+        };
+        _showForm = true;
+    }
+
+    private void CloseForm() => _showForm = false;
+    private async Task OnSaved() { _showForm = false; await LoadAsync(); }
+}

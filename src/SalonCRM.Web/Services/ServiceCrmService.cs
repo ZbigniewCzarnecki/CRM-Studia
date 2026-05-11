@@ -11,12 +11,12 @@ public class ServiceCrmService : IServiceCrmService
     public ServiceCrmService(ApplicationDbContext db) => _db = db;
 
     public Task<List<ServiceEntity>> GetAllAsync(CancellationToken ct = default) =>
-        _db.Services.OrderBy(s => s.Name).ToListAsync(ct);
+        _db.Services.AsNoTracking().OrderBy(s => s.Name).ToListAsync(ct);
 
     public Task<List<ServiceEntity>> SearchAsync(string query, CancellationToken ct = default)
     {
         var q = query.Trim().ToLower();
-        return _db.Services
+        return _db.Services.AsNoTracking()
             .Where(s => s.Name.ToLower().Contains(q) || s.Description.ToLower().Contains(q))
             .OrderBy(s => s.Name)
             .ToListAsync(ct);
@@ -32,11 +32,15 @@ public class ServiceCrmService : IServiceCrmService
         return service;
     }
 
-    public async Task UpdateAsync(ServiceEntity service, CancellationToken ct = default)
-    {
-        _db.Services.Update(service);
-        await _db.SaveChangesAsync(ct);
-    }
+    public Task UpdateAsync(ServiceEntity service, CancellationToken ct = default) =>
+        _db.Services
+            .Where(s => s.Id == service.Id)
+            .ExecuteUpdateAsync(s => s
+                .SetProperty(e => e.Name, service.Name)
+                .SetProperty(e => e.Description, service.Description)
+                .SetProperty(e => e.DurationMinutes, service.DurationMinutes)
+                .SetProperty(e => e.Price, service.Price)
+                .SetProperty(e => e.Category, service.Category), ct);
 
     public async Task DeleteAsync(int id, CancellationToken ct = default)
     {
