@@ -2,7 +2,11 @@
 @rendermode InteractiveServer
 @attribute [Microsoft.AspNetCore.Authorization.Authorize]
 @inject IClientService ClientService
+@inject ILoyaltyService LoyaltyService
+@inject ISettingsService SettingsService
 @inject IJSRuntime JS
+@inject IPermissionService PermService
+@inject AuthenticationStateProvider AuthStateProvider
 
 <PageTitle>Klienci — SalonCRM</PageTitle>
 
@@ -12,9 +16,10 @@
         <button class="btn btn-outline-secondary btn-sm" @onclick="ExportCsv">Eksportuj CSV</button>
         <label for="csv-import-input" class="btn btn-outline-secondary btn-sm mb-0" style="cursor:pointer">Importuj CSV</label>
         <InputFile id="csv-import-input" accept=".csv" style="display:none" OnChange="ImportCsv" />
-        <PermissionView Permission="Permission.EditClientData">
+        @if (_canCreate)
+        {
             <button class="btn btn-primary" @onclick="() => OpenForm(null)">+ Dodaj klienta</button>
-        </PermissionView>
+        }
     </div>
 </div>
 
@@ -48,6 +53,7 @@ else
                         <th>Imię i nazwisko</th>
                         <th>Telefon</th>
                         <th>Email</th>
+                        <th>Pieczątki</th>
                         <th></th>
                     </tr>
                 </thead>
@@ -59,20 +65,48 @@ else
                                 <div>@c.FirstName @c.LastName</div>
                                 @if (!string.IsNullOrWhiteSpace(c.Notes))
                                 {
-                                    <small class="text-muted" title="@c.Notes">📝 @(c.Notes.Length > 50 ? c.Notes[..50] + "…" : c.Notes)</small>
+                                    <small class="text-muted" title="@c.Notes"><i class="bi bi-journal-text me-1"></i>@(c.Notes.Length > 50 ? c.Notes[..50] + "…" : c.Notes)</small>
                                 }
                             </td>
                             <td>@c.PhoneNumber</td>
-                            <td>@c.Email</td>
+                            <td>
+                                @c.Email
+                                <div class="d-flex gap-1 mt-1">
+                                    @if (c.ConsentEmail)
+                                    {
+                                        <span class="badge bg-light text-secondary border" title="Zgoda na e-mail"><i class="bi bi-envelope-fill"></i></span>
+                                    }
+                                    @if (c.ConsentSms)
+                                    {
+                                        <span class="badge bg-light text-secondary border" title="Zgoda na SMS"><i class="bi bi-chat-dots-fill"></i></span>
+                                    }
+                                </div>
+                            </td>
+                            <td>
+                                @{
+                                    var count = _stampCounts.TryGetValue(c.Id, out var sc) ? sc : 0;
+                                }
+                                <span class="badge @(count >= _stampsForReward ? "bg-warning text-dark" : "bg-light text-secondary border")"
+                                      title="@count / @_stampsForReward pieczątek">
+                                    <i class="bi bi-star-fill me-1" style="color:var(--salon-pink)"></i>@count / @_stampsForReward
+                                </span>
+                                @if (_canManageLoyalty)
+                                {
+                                    <button class="btn btn-sm btn-outline-secondary ms-1" title="Dodaj pieczątkę"
+                                            @onclick="() => OpenQuickStamp(c)">+</button>
+                                }
+                            </td>
                             <td class="text-end">
                                 <a href="/clients/@c.Id" class="btn btn-sm btn-outline-info me-1">Profil</a>
-                                <PermissionView Permission="Permission.EditClientData">
+                                @if (_canEditAll || c.CreatedByUserId == _currentUserId)
+                                {
                                     <button class="btn btn-sm btn-outline-primary me-1" @onclick="() => OpenForm(c)">Edytuj</button>
-                                </PermissionView>
+                                }
                                 <button class="btn btn-sm btn-outline-secondary me-1" @onclick="() => OpenNotes(c)">Notatki</button>
-                                <PermissionView Permission="Permission.EditClientData">
+                                @if (_canEditAll)
+                                {
                                     <button class="btn btn-sm btn-outline-danger" @onclick="() => ConfirmDelete(c)">Usuń</button>
-                                </PermissionView>
+                                }
                             </td>
                         </tr>
                     }
@@ -118,20 +152,68 @@ else
     </div>
 }
 
+@if (_showQuickStamp && _stampClient != null)
+{
+    <div class="modal-backdrop">
+        <div class="modal-dialog-custom">
+            <div class="modal-header-custom">
+                <h5>Dodaj pieczątkę — @_stampClient.FirstName @_stampClient.LastName</h5>
+                <button class="btn-close" @onclick="CloseQuickStamp"></button>
+            </div>
+            <div class="modal-body-custom">
+                <label class="form-label">Notatka (opcjonalnie)</label>
+                <input class="form-control" @bind="_stampNote" placeholder="np. urodziny, akcja promocyjna..." />
+            </div>
+            <div class="modal-footer-custom">
+                <button class="btn btn-primary" @onclick="ConfirmQuickStamp">Dodaj pieczątkę</button>
+                <button class="btn btn-secondary ms-2" @onclick="CloseQuickStamp">Anuluj</button>
+            </div>
+        </div>
+    </div>
+}
+
+@if (_stampAdded)
+{
+    <div class="toast-notification">
+        <i class="bi bi-star-fill me-2" style="color:var(--salon-pink)"></i>Pieczątka dodana!
+    </div>
+}
+
 @code {
     private List<ClientEntity> _clients = [];
+    private Dictionary<int, int> _stampCounts = [];
+    private int _stampsForReward = 10;
     private string _query = string.Empty;
     private bool _loading = true;
     private bool _showForm;
     private bool _showDeleteConfirm;
     private bool _showNotes;
+    private bool _showQuickStamp;
+    private bool _stampAdded;
     private ClientEntity? _editing;
     private ClientEntity? _toDelete;
     private ClientEntity? _notesClient;
+    private ClientEntity? _stampClient;
     private string _notesText = string.Empty;
+    private string _stampNote = string.Empty;
     private string? _importResult;
+    private string _currentUserId = string.Empty;
+    private bool _canCreate;
+    private bool _canEditAll;
+    private bool _canManageLoyalty;
 
-    protected override async Task OnInitializedAsync() => await LoadAsync();
+    protected override async Task OnInitializedAsync()
+    {
+        var authState = await AuthStateProvider.GetAuthenticationStateAsync();
+        var user = authState.User;
+        _currentUserId = user.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value ?? "";
+        _canCreate = await PermService.HasAsync(user, Permission.CreateClients);
+        _canEditAll = await PermService.HasAsync(user, Permission.EditClientData);
+        _canManageLoyalty = await PermService.HasAsync(user, Permission.ManageLoyaltyCards);
+        var settings = await SettingsService.GetAsync();
+        _stampsForReward = settings.LoyaltyStampsForReward;
+        await LoadAsync();
+    }
 
     private async Task LoadAsync()
     {
@@ -139,6 +221,9 @@ else
         _clients = string.IsNullOrWhiteSpace(_query)
             ? await ClientService.GetAllAsync()
             : await ClientService.SearchAsync(_query);
+        _stampCounts = [];
+        foreach (var c in _clients)
+            _stampCounts[c.Id] = await LoyaltyService.CountAsync(c.Id);
         _loading = false;
     }
 
@@ -148,36 +233,34 @@ else
     {
         var all = await ClientService.GetAllAsync();
         var sb = new System.Text.StringBuilder();
-        sb.AppendLine("Id,Imię,Nazwisko,Telefon,Email,Notatki");
+        sb.AppendLine("Id;Imie;Nazwisko;Telefon;Email;Notatki");
         foreach (var c in all)
-        {
-            var notes = c.Notes.Replace("\"", "\"\"");
-            sb.AppendLine($"{c.Id},\"{c.FirstName}\",\"{c.LastName}\",\"{c.PhoneNumber}\",\"{c.Email}\",\"{notes}\"");
-        }
-        var base64 = Convert.ToBase64String(System.Text.Encoding.UTF8.GetBytes(sb.ToString()));
-        await JS.InvokeVoidAsync("downloadCsv", "klienci.csv", base64);
+            sb.AppendLine($"{c.Id};{CsvQ(c.FirstName)};{CsvQ(c.LastName)};{CsvQ(c.PhoneNumber)};{CsvQ(c.Email)};{CsvQ(c.Notes)}");
+        var bytes = new System.Text.UTF8Encoding(true).GetBytes(sb.ToString());
+        await JS.InvokeVoidAsync("downloadCsv", "klienci.csv", Convert.ToBase64String(bytes));
     }
 
     private async Task ImportCsv(InputFileChangeEventArgs e)
     {
-        using var reader = new System.IO.StreamReader(e.File.OpenReadStream(maxAllowedSize: 5_000_000));
+        using var reader = new System.IO.StreamReader(
+            e.File.OpenReadStream(maxAllowedSize: 5_000_000),
+            new System.Text.UTF8Encoding(true));
         var content = await reader.ReadToEndAsync();
         var lines = content.Split('\n', StringSplitOptions.RemoveEmptyEntries).Skip(1);
         int added = 0, skipped = 0;
         var existing = (await ClientService.GetAllAsync()).Select(c => c.Email.ToLower()).ToHashSet();
-        foreach (var line in lines)
+        foreach (var rawLine in lines)
         {
-            var parts = line.Split(',');
+            var parts = rawLine.Trim('\r').Split(';');
             if (parts.Length < 5) continue;
-            var email = parts[4].Trim().Trim('"');
+            var email = Unq(parts[4]);
             if (string.IsNullOrWhiteSpace(email) || existing.Contains(email.ToLower())) { skipped++; continue; }
             await ClientService.CreateAsync(new ClientEntity
             {
-                FirstName = parts[1].Trim().Trim('"'),
-                LastName = parts[2].Trim().Trim('"'),
-                PhoneNumber = parts[3].Trim().Trim('"'),
-                Email = email,
-                Notes = parts.Length > 5 ? parts[5].Trim().Trim('"').TrimEnd('\r') : ""
+                FirstName = Unq(parts[1]), LastName = Unq(parts[2]),
+                PhoneNumber = Unq(parts[3]), Email = email,
+                Notes = parts.Length > 5 ? Unq(parts[5]) : "",
+                CreatedByUserId = _currentUserId
             });
             added++;
         }
@@ -185,13 +268,20 @@ else
         await LoadAsync();
     }
 
+    private static string Unq(string s) => s.Trim().Trim('"');
+    private static string CsvQ(string v) => "\"" + v.Replace("\"", "\"\"") + "\"";
+
     private void OpenForm(ClientEntity? client)
     {
-        _editing = client == null ? new ClientEntity() : new ClientEntity
-        {
-            Id = client.Id, FirstName = client.FirstName, LastName = client.LastName,
-            PhoneNumber = client.PhoneNumber, Email = client.Email, Notes = client.Notes
-        };
+        _editing = client == null
+            ? new ClientEntity { CreatedByUserId = _currentUserId }
+            : new ClientEntity
+            {
+                Id = client.Id, FirstName = client.FirstName, LastName = client.LastName,
+                PhoneNumber = client.PhoneNumber, Email = client.Email, Notes = client.Notes,
+                CreatedByUserId = client.CreatedByUserId,
+                ConsentEmail = client.ConsentEmail, ConsentSms = client.ConsentSms
+            };
         _showForm = true;
     }
 
@@ -210,12 +300,39 @@ else
         var updated = new ClientEntity
         {
             Id = _notesClient.Id, FirstName = _notesClient.FirstName, LastName = _notesClient.LastName,
-            PhoneNumber = _notesClient.PhoneNumber, Email = _notesClient.Email, Notes = _notesText
+            PhoneNumber = _notesClient.PhoneNumber, Email = _notesClient.Email, Notes = _notesText,
+            ConsentEmail = _notesClient.ConsentEmail, ConsentSms = _notesClient.ConsentSms
         };
         await ClientService.UpdateAsync(updated);
         _showNotes = false;
         _notesClient = null;
         await LoadAsync();
+    }
+
+    private void OpenQuickStamp(ClientEntity c)
+    {
+        _stampClient = c;
+        _stampNote = string.Empty;
+        _showQuickStamp = true;
+    }
+
+    private void CloseQuickStamp()
+    {
+        _showQuickStamp = false;
+        _stampClient = null;
+    }
+
+    private async Task ConfirmQuickStamp()
+    {
+        if (_stampClient == null) return;
+        await LoyaltyService.AddStampAsync(_stampClient.Id, null, _currentUserId, _stampNote, true);
+        _stampCounts[_stampClient.Id] = await LoyaltyService.CountAsync(_stampClient.Id);
+        _showQuickStamp = false;
+        _stampClient = null;
+        _stampAdded = true;
+        StateHasChanged();
+        await Task.Delay(2000);
+        _stampAdded = false;
     }
 
     private void CloseForm() => _showForm = false;

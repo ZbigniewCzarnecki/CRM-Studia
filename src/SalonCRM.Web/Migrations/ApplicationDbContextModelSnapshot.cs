@@ -257,6 +257,16 @@ namespace SalonCRM.Web.Migrations
                         .ValueGeneratedOnAdd()
                         .HasColumnType("INTEGER");
 
+                    b.Property<bool>("ConsentEmail")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<bool>("ConsentSms")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("CreatedByUserId")
+                        .HasMaxLength(450)
+                        .HasColumnType("TEXT");
+
                     b.Property<string>("Email")
                         .IsRequired()
                         .HasMaxLength(200)
@@ -395,6 +405,9 @@ namespace SalonCRM.Web.Migrations
                 {
                     b.Property<string>("UserId")
                         .HasColumnType("TEXT");
+
+                    b.Property<bool>("CanCreateClients")
+                        .HasColumnType("INTEGER");
 
                     b.Property<bool>("CanDeleteAppointments")
                         .HasColumnType("INTEGER");

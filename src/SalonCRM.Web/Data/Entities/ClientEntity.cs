@@ -15,9 +15,15 @@ public class ClientEntity
     [MaxLength(20)]
     public string PhoneNumber { get; set; } = string.Empty;
 
-    [Required, EmailAddress, MaxLength(200)]
+    [EmailAddress, MaxLength(200)]
     public string Email { get; set; } = string.Empty;
 
     [MaxLength(2000)]
     public string Notes { get; set; } = string.Empty;
+
+    [MaxLength(450)]
+    public string? CreatedByUserId { get; set; }
+
+    public bool ConsentEmail { get; set; }
+    public bool ConsentSms { get; set; }
 }

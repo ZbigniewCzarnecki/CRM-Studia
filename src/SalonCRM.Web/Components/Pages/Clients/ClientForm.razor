@@ -25,9 +25,19 @@
                         <InputText @bind-Value="Client.PhoneNumber" class="form-control" />
                     </div>
                     <div class="col-md-6">
-                        <label class="form-label">Email *</label>
+                        <label class="form-label">Email</label>
                         <InputText @bind-Value="Client.Email" class="form-control" />
                         <ValidationMessage For="() => Client.Email" />
+                    </div>
+                    <div class="col-12">
+                        <div class="form-check">
+                            <InputCheckbox @bind-Value="Client.ConsentEmail" class="form-check-input" id="consentEmail" />
+                            <label class="form-check-label" for="consentEmail">Zgoda na wysyłanie wiadomości e-mail</label>
+                        </div>
+                        <div class="form-check mt-1">
+                            <InputCheckbox @bind-Value="Client.ConsentSms" class="form-check-input" id="consentSms" />
+                            <label class="form-check-label" for="consentSms">Zgoda na wysyłanie SMS</label>
+                        </div>
                     </div>
                 </div>
             </div>

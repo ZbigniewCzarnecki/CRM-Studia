@@ -43,7 +43,9 @@ public class ClientService : IClientService
                 .SetProperty(c => c.LastName, client.LastName)
                 .SetProperty(c => c.PhoneNumber, client.PhoneNumber)
                 .SetProperty(c => c.Email, client.Email)
-                .SetProperty(c => c.Notes, client.Notes), ct);
+                .SetProperty(c => c.Notes, client.Notes)
+                .SetProperty(c => c.ConsentEmail, client.ConsentEmail)
+                .SetProperty(c => c.ConsentSms, client.ConsentSms), ct);
 
     public async Task DeleteAsync(int id, CancellationToken ct = default)
     {

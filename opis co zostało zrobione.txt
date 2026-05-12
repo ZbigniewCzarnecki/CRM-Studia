@@ -117,6 +117,26 @@ Stos: Blazor Server .NET 8 + EF Core + SQLite + ASP.NET Core Identity
   NavMenu: dodano link Ustawienia (Admin, ⚙️)
   CSS: .loyalty-stamp, .loyalty-stamp-filled, .loyalty-stamp-empty
 
+[web-v5] Zgody marketingowe + pieczątki w liście klientów
+  Migracja: AddClientConsents (+ConsentEmail, +ConsentSms do tabeli Clients)
+  ClientEntity:
+  - Email nie jest już wymagany ([Required] usunięty — pole opcjonalne)
+  - +ConsentEmail (bool) — zgoda na e-mail
+  - +ConsentSms (bool)   — zgoda na SMS
+  ClientForm.razor:
+  - Etykieta "Email" bez gwiazdki
+  - Dwa checkboxy: "Zgoda na wysyłanie wiadomości e-mail" / "Zgoda na wysyłanie SMS"
+  ClientService.UpdateAsync:
+  - Zapisuje ConsentEmail i ConsentSms przy edycji
+  ClientList.razor:
+  - Nowa kolumna "Pieczątki" — badge ★ N/max (złoty = komplet)
+  - Ikony zgód (koperta/dymek) przy adresie e-mail
+  - Przycisk "+" obok pieczątek → popup "Dodaj pieczątkę" z notatką i potwierdzeniem
+  - Toast "Pieczątka dodana!" (2 s) po dodaniu
+  - Widoczność przycisku zależna od uprawnienia ManageLoyaltyCards
+  app.css:
+  - Styl .toast-notification z animacją fadeInUp
+
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 █ PROBLEMY I ROZWIĄZANIA
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
