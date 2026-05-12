@@ -1,0 +1,292 @@
+@page "/vouchery"
+@rendermode InteractiveServer
+@attribute [Microsoft.AspNetCore.Authorization.Authorize]
+@inject IVoucherService VoucherService
+
+<PageTitle>Vouchery — SalonCRM</PageTitle>
+
+<div class="page-header">
+    <h1>Vouchery</h1>
+    <button class="btn btn-primary" @onclick="OpenCreate">
+        <i class="bi bi-plus-lg me-1"></i>Nowy voucher
+    </button>
+</div>
+
+@if (_expiringCount > 0)
+{
+    <div class="alert alert-warning d-flex align-items-center gap-2 mt-3">
+        <i class="bi bi-exclamation-triangle-fill"></i>
+        <span><strong>@_expiringCount</strong> voucher(y) wygasa w ciągu 7 dni!</span>
+    </div>
+}
+
+<div class="card mt-3">
+    <div class="card-header d-flex gap-2">
+        <button class="btn btn-sm @(_filter == "all" ? "btn-primary" : "btn-outline-primary")" @onclick='() => _filter = "all"'>Wszystkie</button>
+        <button class="btn btn-sm @(_filter == "active" ? "btn-success" : "btn-outline-success")" @onclick='() => _filter = "active"'>Aktywne</button>
+        <button class="btn btn-sm @(_filter == "used" ? "btn-secondary" : "btn-outline-secondary")" @onclick='() => _filter = "used"'>Użyte</button>
+        <button class="btn btn-sm @(_filter == "expired" ? "btn-dark" : "btn-outline-dark")" @onclick='() => _filter = "expired"'>Wygasłe</button>
+    </div>
+    <div class="card-body p-0">
+        @if (_loading)
+        {
+            <div class="p-4 text-center text-muted">Ładowanie...</div>
+        }
+        else if (!Filtered.Any())
+        {
+            <div class="p-4 text-center text-muted">Brak voucherów do wyświetlenia.</div>
+        }
+        else
+        {
+            <table class="table table-hover mb-0">
+                <thead>
+                    <tr>
+                        <th>Kod</th>
+                        <th>Odbiorca</th>
+                        <th>Typ</th>
+                        <th>Wartość</th>
+                        <th>Ważny do</th>
+                        <th>Status</th>
+                        <th></th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach (var v in Filtered)
+                    {
+                        <tr>
+                            <td><code>@v.Code</code></td>
+                            <td>@v.RecipientName</td>
+                            <td>@(v.Type == VoucherType.Amount ? "Kwotowy" : "Na usługę")</td>
+                            <td>
+                                @if (v.Type == VoucherType.Amount)
+                                {
+                                    @($"{v.AmountValue?.ToString("F0")} PLN")
+                                }
+                                else
+                                {
+                                    @(string.IsNullOrEmpty(v.ServiceName) ? "—" : v.ServiceName)
+                                }
+                            </td>
+                            <td>@v.ExpiresAt.ToString("dd.MM.yyyy")</td>
+                            <td>
+                                @if (v.IsUsed)
+                                {
+                                    <span class="badge bg-secondary">Użyty</span>
+                                }
+                                else if (v.IsExpired)
+                                {
+                                    <span class="badge bg-secondary">Wygasły</span>
+                                }
+                                else
+                                {
+                                    <span class="badge bg-success">Aktywny</span>
+                                }
+                            </td>
+                            <td class="text-end">
+                                <button class="btn btn-sm btn-outline-primary me-1" @onclick="() => OpenEdit(v)">Edytuj</button>
+                                <button class="btn btn-sm btn-outline-danger" @onclick="() => ConfirmDelete(v)">Usuń</button>
+                            </td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        }
+    </div>
+</div>
+
+@if (_showForm && _editing != null)
+{
+    <div class="modal-backdrop">
+        <div class="modal-dialog-custom">
+            <div class="modal-header-custom">
+                <h5>@(_editing.Id == 0 ? "Nowy voucher" : "Edytuj voucher")</h5>
+                <button class="btn-close" @onclick="CloseForm"></button>
+            </div>
+            <EditForm Model="_editing" OnValidSubmit="SaveVoucher" FormName="voucher-form">
+                <DataAnnotationsValidator />
+                <div class="modal-body-custom">
+                    <div class="row g-3">
+                        <div class="col-md-8">
+                            <label class="form-label">Kod *</label>
+                            <div class="input-group">
+                                <InputText @bind-Value="_editing.Code" class="form-control" placeholder="np. V-2605-ABCD" />
+                                <button type="button" class="btn btn-outline-secondary" @onclick="GenerateCode">Generuj</button>
+                            </div>
+                            <ValidationMessage For="() => _editing.Code" />
+                        </div>
+                        <div class="col-md-4">
+                            <label class="form-label">Typ</label>
+                            <InputSelect @bind-Value="_editing.Type" class="form-select">
+                                <option value="@VoucherType.Amount">Kwotowy</option>
+                                <option value="@VoucherType.Service">Na usługę</option>
+                            </InputSelect>
+                        </div>
+                        <div class="col-12">
+                            <label class="form-label">Odbiorca</label>
+                            <InputText @bind-Value="_editing.RecipientName" class="form-control" placeholder="Imię i nazwisko odbiorcy" />
+                        </div>
+                        @if (_editing.Type == VoucherType.Amount)
+                        {
+                            <div class="col-md-6">
+                                <label class="form-label">Wartość (PLN)</label>
+                                <InputNumber @bind-Value="_editing.AmountValue" class="form-control" />
+                            </div>
+                        }
+                        else
+                        {
+                            <div class="col-md-6">
+                                <label class="form-label">Nazwa usługi</label>
+                                <InputText @bind-Value="_editing.ServiceName" class="form-control" placeholder="np. Strzyżenie damskie" />
+                            </div>
+                        }
+                        <div class="col-md-6">
+                            <label class="form-label">Ważny do</label>
+                            <InputDate @bind-Value="_editing.ExpiresAt" class="form-control" />
+                        </div>
+                        <div class="col-12">
+                            <label class="form-label">Notatki</label>
+                            <InputTextArea @bind-Value="_editing.Notes" class="form-control" rows="2" />
+                        </div>
+                        @if (_editing.Id != 0)
+                        {
+                            <div class="col-12">
+                                <div class="form-check">
+                                    <InputCheckbox @bind-Value="_editing.IsUsed" class="form-check-input" id="isUsed" />
+                                    <label class="form-check-label" for="isUsed">Oznacz jako użyty</label>
+                                </div>
+                            </div>
+                        }
+                    </div>
+                </div>
+                <div class="modal-footer-custom">
+                    <button type="submit" class="btn btn-primary" disabled="@_saving">
+                        @(_saving ? "Zapisywanie..." : "Zapisz")
+                    </button>
+                    <button type="button" class="btn btn-secondary ms-2" @onclick="CloseForm">Anuluj</button>
+                </div>
+            </EditForm>
+        </div>
+    </div>
+}
+
+@if (_deleteTarget != null)
+{
+    <div class="modal-backdrop">
+        <div class="modal-dialog-custom">
+            <div class="modal-header-custom">
+                <h5>Usuń voucher</h5>
+                <button class="btn-close" @onclick="() => _deleteTarget = null"></button>
+            </div>
+            <div class="modal-body-custom">
+                <p>Czy na pewno chcesz usunąć voucher <strong>@_deleteTarget.Code</strong>?</p>
+                <p class="text-muted small">Tej operacji nie można cofnąć.</p>
+            </div>
+            <div class="modal-footer-custom">
+                <button class="btn btn-danger" @onclick="DeleteConfirmed">Usuń</button>
+                <button class="btn btn-secondary ms-2" @onclick="() => _deleteTarget = null">Anuluj</button>
+            </div>
+        </div>
+    </div>
+}
+
+@code {
+    private List<VoucherEntity> _vouchers = [];
+    private string _filter = "all";
+    private bool _loading = true;
+    private bool _showForm;
+    private VoucherEntity _editing = new();
+    private VoucherEntity? _deleteTarget;
+    private bool _saving;
+    private int _expiringCount;
+
+    private IEnumerable<VoucherEntity> Filtered => _filter switch
+    {
+        "active" => _vouchers.Where(v => v.IsActive),
+        "used" => _vouchers.Where(v => v.IsUsed),
+        "expired" => _vouchers.Where(v => v.IsExpired && !v.IsUsed),
+        _ => _vouchers
+    };
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadData();
+    }
+
+    private async Task LoadData()
+    {
+        _loading = true;
+        _vouchers = await VoucherService.GetAllAsync();
+        _expiringCount = await VoucherService.GetExpiringCountAsync(7);
+        _loading = false;
+    }
+
+    private void OpenCreate()
+    {
+        _editing = new VoucherEntity { ExpiresAt = DateTime.Now.AddMonths(6) };
+        GenerateCode();
+        _showForm = true;
+    }
+
+    private void OpenEdit(VoucherEntity v)
+    {
+        _editing = new VoucherEntity
+        {
+            Id = v.Id,
+            Code = v.Code,
+            RecipientName = v.RecipientName,
+            Type = v.Type,
+            AmountValue = v.AmountValue,
+            ServiceName = v.ServiceName,
+            ExpiresAt = v.ExpiresAt,
+            Notes = v.Notes,
+            IsUsed = v.IsUsed,
+            UsedAt = v.UsedAt,
+            UsedInAppointment = v.UsedInAppointment,
+            CreatedAt = v.CreatedAt,
+            AppointmentId = v.AppointmentId
+        };
+        _showForm = true;
+    }
+
+    private void CloseForm()
+    {
+        _showForm = false;
+        _editing = new();
+    }
+
+    private void GenerateCode()
+    {
+        var rnd = new Random();
+        var suffix = new string(Enumerable.Range(0, 4).Select(_ => (char)('A' + rnd.Next(26))).ToArray());
+        _editing.Code = "V-" + DateTime.Now.ToString("yyMM") + "-" + suffix;
+    }
+
+    private async Task SaveVoucher()
+    {
+        _saving = true;
+        try
+        {
+            if (_editing.Id == 0)
+                await VoucherService.CreateAsync(_editing);
+            else
+                await VoucherService.UpdateAsync(_editing);
+
+            CloseForm();
+            await LoadData();
+        }
+        finally
+        {
+            _saving = false;
+        }
+    }
+
+    private void ConfirmDelete(VoucherEntity v) => _deleteTarget = v;
+
+    private async Task DeleteConfirmed()
+    {
+        if (_deleteTarget == null) return;
+        await VoucherService.DeleteAsync(_deleteTarget.Id);
+        _deleteTarget = null;
+        await LoadData();
+    }
+}

@@ -35,6 +35,7 @@ builder.Services.AddScoped<ISettingsService, SettingsService>();
 builder.Services.AddScoped<ILoyaltyService, LoyaltyService>();
 builder.Services.AddScoped<IPermissionService, PermissionService>();
 builder.Services.AddScoped<IMembershipService, MembershipService>();
+builder.Services.AddScoped<IVoucherService, VoucherService>();
 
 builder.Services.AddRazorComponents()
     .AddInteractiveServerComponents();

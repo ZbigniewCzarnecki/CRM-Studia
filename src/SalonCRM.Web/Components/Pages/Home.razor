@@ -4,6 +4,7 @@
 @inject IClientService ClientService
 @inject IServiceCrmService ServiceCrmService
 @inject IAppointmentService AppointmentService
+@inject IVoucherService VoucherService
 
 <PageTitle>Dashboard — SalonCRM</PageTitle>
 
@@ -14,42 +15,61 @@
 
 <div class="stats-grid">
     <div class="stat-card">
-        <div class="stat-icon">👤</div>
+        <div class="stat-icon"><i class="bi bi-people-fill"></i></div>
         <div class="stat-value">@_clientCount</div>
         <div class="stat-label">Klientów</div>
     </div>
     <div class="stat-card">
-        <div class="stat-icon">✂️</div>
+        <div class="stat-icon"><i class="bi bi-scissors"></i></div>
         <div class="stat-value">@_serviceCount</div>
         <div class="stat-label">Usług</div>
     </div>
     <div class="stat-card accent">
-        <div class="stat-icon">📅</div>
+        <div class="stat-icon"><i class="bi bi-calendar-check-fill"></i></div>
         <div class="stat-value">@_upcomingCount</div>
         <div class="stat-label">Nadchodzących wizyt</div>
     </div>
     <PermissionView Permission="Permission.ViewReports">
         <div class="stat-card stat-green">
-            <div class="stat-icon">💰</div>
+            <div class="stat-icon"><i class="bi bi-cash-stack"></i></div>
             <div class="stat-value">@_revenueToday.ToString("C0", new System.Globalization.CultureInfo("pl-PL"))</div>
             <div class="stat-label">Przychód dziś</div>
         </div>
     </PermissionView>
     <PermissionView Permission="Permission.ViewReports">
         <div class="stat-card stat-green">
-            <div class="stat-icon">📈</div>
+            <div class="stat-icon"><i class="bi bi-graph-up-arrow"></i></div>
             <div class="stat-value">@_revenueMonth.ToString("C0", new System.Globalization.CultureInfo("pl-PL"))</div>
             <div class="stat-label">Przychód w miesiącu</div>
         </div>
     </PermissionView>
     <PermissionView Permission="Permission.ViewReports">
         <div class="stat-card">
-            <div class="stat-icon">✅</div>
+            <div class="stat-icon"><i class="bi bi-check-circle-fill"></i></div>
             <div class="stat-value">@_completedMonth</div>
             <div class="stat-label">Zrealizowanych w miesiącu</div>
         </div>
     </PermissionView>
 </div>
+
+@if (_expiringVouchers.Any())
+{
+    <div class="alert alert-warning mt-4 d-flex flex-column gap-1">
+        <div><i class="bi bi-clock-fill me-2"></i><strong>Vouchery wygasające w ciągu 7 dni: @_expiringVouchers.Count</strong></div>
+        <ul class="mb-1">
+            @foreach (var v in _expiringVouchers.Take(5))
+            {
+                <li>
+                    <strong>@v.Code</strong> — @v.RecipientName
+                    (@(v.Type == VoucherType.Amount ? v.AmountValue + " PLN" : v.ServiceName)),
+                    ważny do: <strong>@v.ExpiresAt.ToString("dd.MM.yyyy")</strong>
+                    (@v.DaysUntilExpiry dni)
+                </li>
+            }
+        </ul>
+        <div><a href="/vouchery" class="btn btn-sm btn-warning">Zarządzaj voucherami</a></div>
+    </div>
+}
 
 @if (_upcoming.Any())
 {
@@ -85,6 +105,7 @@
     private int _clientCount, _serviceCount, _upcomingCount, _completedMonth;
     private decimal _revenueToday, _revenueMonth;
     private List<AppointmentEntity> _upcoming = [];
+    private List<VoucherEntity> _expiringVouchers = [];
 
     protected override async Task OnInitializedAsync()
     {
@@ -100,14 +121,16 @@
         var revTodayTask = AppointmentService.GetRevenueAsync(todayStart, todayEnd);
         var revMonthTask = AppointmentService.GetRevenueAsync(monthStart, monthEnd);
         var allTask = AppointmentService.GetAllAsync();
+        var expiringTask = VoucherService.GetExpiringAsync(7);
 
-        await Task.WhenAll(clientsTask, servicesTask, upcomingCountTask, revTodayTask, revMonthTask, allTask);
+        await Task.WhenAll(clientsTask, servicesTask, upcomingCountTask, revTodayTask, revMonthTask, allTask, expiringTask);
 
         _clientCount = clientsTask.Result.Count;
         _serviceCount = servicesTask.Result.Count;
         _upcomingCount = upcomingCountTask.Result;
         _revenueToday = revTodayTask.Result;
         _revenueMonth = revMonthTask.Result;
+        _expiringVouchers = expiringTask.Result;
 
         var all = allTask.Result;
         _upcoming = all.Where(a => a.Date >= now).OrderBy(a => a.Date).Take(5).ToList();

@@ -16,4 +16,5 @@ public class ApplicationDbContext : IdentityDbContext<ApplicationUser>
     public DbSet<UserPermissions> UserPermissions => Set<UserPermissions>();
     public DbSet<MembershipPackageEntity> MembershipPackages => Set<MembershipPackageEntity>();
     public DbSet<ClientMembershipEntity> ClientMemberships => Set<ClientMembershipEntity>();
+    public DbSet<VoucherEntity> Vouchers => Set<VoucherEntity>();
 }

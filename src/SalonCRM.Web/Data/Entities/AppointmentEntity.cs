@@ -25,4 +25,6 @@ public class AppointmentEntity
     public string Notes { get; set; } = string.Empty;
 
     public int? ClientMembershipId { get; set; }
+
+    public int? VoucherId { get; set; }
 }

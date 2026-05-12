@@ -41,6 +41,23 @@ public class AppointmentService : IAppointmentService
     {
         _db.Appointments.Add(appt);
         await _db.SaveChangesAsync(ct);
+
+        if (appt.VoucherId.HasValue)
+        {
+            var v = await _db.Vouchers.FindAsync([appt.VoucherId.Value], ct);
+            if (v != null && v.AppointmentId == null && !v.IsUsed)
+            {
+                v.AppointmentId = appt.Id;
+                if (v.Type == VoucherType.Amount)
+                {
+                    v.IsUsed = true;
+                    v.UsedAt = DateTime.Now;
+                    v.UsedInAppointment = $"{appt.ClientName} — {appt.ServiceName}";
+                }
+                await _db.SaveChangesAsync(ct);
+            }
+        }
+
         return appt;
     }
 
@@ -55,7 +72,8 @@ public class AppointmentService : IAppointmentService
                 .SetProperty(a => a.DurationMinutes, appt.DurationMinutes)
                 .SetProperty(a => a.Status, appt.Status)
                 .SetProperty(a => a.Notes, appt.Notes)
-                .SetProperty(a => a.ClientMembershipId, appt.ClientMembershipId), ct);
+                .SetProperty(a => a.ClientMembershipId, appt.ClientMembershipId)
+                .SetProperty(a => a.VoucherId, appt.VoucherId), ct);
 
     public async Task DeleteAsync(int id, CancellationToken ct = default)
     {
@@ -100,6 +118,18 @@ public class AppointmentService : IAppointmentService
 
                 if (appt.ClientMembershipId.HasValue)
                     await _membership.UseEntryAsync(appt.ClientMembershipId.Value, ct);
+
+                if (appt.VoucherId.HasValue)
+                {
+                    var v = await _db.Vouchers.FindAsync([appt.VoucherId.Value], ct);
+                    if (v != null && !v.IsUsed)
+                    {
+                        v.IsUsed = true;
+                        v.UsedAt = DateTime.Now;
+                        v.UsedInAppointment = $"{appt.ClientName} — {appt.ServiceName}";
+                        await _db.SaveChangesAsync(ct);
+                    }
+                }
             }
         }
     }

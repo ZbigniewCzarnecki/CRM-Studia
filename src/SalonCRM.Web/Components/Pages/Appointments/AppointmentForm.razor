@@ -2,6 +2,7 @@
 @inject IClientService ClientService
 @inject IServiceCrmService ServiceCrmService
 @inject IMembershipService MembershipService
+@inject IVoucherService VoucherService
 @using SalonCRM.Web.Data.Entities
 
 <div class="modal-backdrop">
@@ -75,6 +76,33 @@
                         </div>
                     }
                     <div class="col-12">
+                        <label class="form-label">Voucher</label>
+                        <select class="form-select" value="@(Appointment.VoucherId?.ToString() ?? "")" @onchange="OnVoucherChanged">
+                            <option value="">-- bez vouchera --</option>
+                            @foreach (var v in _availableVouchers)
+                            {
+                                <option value="@v.Id">@v.Code — @v.RecipientName (@(v.Type == VoucherType.Amount ? v.AmountValue?.ToString("F0") + " PLN" : v.ServiceName), ważny do @v.ExpiresAt.ToString("dd.MM.yyyy"))</option>
+                            }
+                        </select>
+                        @if (_selectedVoucher != null)
+                        {
+                            @if (_selectedVoucher.Type == VoucherType.Amount)
+                            {
+                                <div class="alert alert-success py-1 px-2 small mt-2 mb-0">
+                                    <i class="bi bi-check-circle-fill me-1"></i>Voucher kwotowy — odliczenie: @_selectedVoucher.AmountValue PLN
+                                </div>
+                            }
+                            else
+                            {
+                                var matches = string.IsNullOrEmpty(_selectedVoucher.ServiceName) || _selectedVoucher.ServiceName == Appointment.ServiceName;
+                                <div class="alert @(matches ? "alert-success" : "alert-warning") py-1 px-2 small mt-2 mb-0">
+                                    <i class="bi bi-@(matches ? "check-circle-fill" : "exclamation-triangle-fill") me-1"></i>
+                                    Voucher na usługę: @_selectedVoucher.ServiceName@(!matches ? " (nie pasuje do wybranej usługi)" : "")
+                                </div>
+                            }
+                        }
+                    </div>
+                    <div class="col-12">
                         <label class="form-label">Notatki do wizyty</label>
                         <InputTextArea @bind-Value="Appointment.Notes" class="form-control" rows="2" placeholder="Uwagi, preferencje, informacje dla pracownika..." />
                     </div>
@@ -97,6 +125,9 @@
     private List<ServiceEntity> _services = [];
     private List<ClientMembershipEntity> _activeMemberships = [];
     private ClientMembershipEntity? _selectedMembership;
+    private List<VoucherEntity> _availableVouchers = [];
+    private VoucherEntity? _selectedVoucher;
+    private decimal _basePrice;
 
     protected override async Task OnInitializedAsync()
     {
@@ -108,6 +139,23 @@
 
         if (!string.IsNullOrEmpty(Appointment.ServiceName) && Appointment.TotalAmount == 0)
             OnServiceChanged();
+
+        _availableVouchers = await VoucherService.GetAvailableAsync();
+        if (Appointment.VoucherId.HasValue)
+        {
+            _selectedVoucher = _availableVouchers.FirstOrDefault(v => v.Id == Appointment.VoucherId.Value);
+            if (_selectedVoucher == null)
+            {
+                // editing existing appointment: load the already-used voucher too
+                var all = await VoucherService.GetAllAsync();
+                _selectedVoucher = all.FirstOrDefault(v => v.Id == Appointment.VoucherId.Value);
+                if (_selectedVoucher != null)
+                    _availableVouchers.Insert(0, _selectedVoucher);
+            }
+        }
+
+        var svc = _services.FirstOrDefault(s => s.Name == Appointment.ServiceName);
+        if (svc != null) _basePrice = svc.Price;
     }
 
     private async Task OnClientChanged()
@@ -136,6 +184,7 @@
         var service = _services.FirstOrDefault(s => s.Name == Appointment.ServiceName);
         if (service != null)
         {
+            _basePrice = service.Price;
             if (Appointment.ClientMembershipId == null)
                 Appointment.TotalAmount = service.Price;
             Appointment.DurationMinutes = service.DurationMinutes;
@@ -152,6 +201,9 @@
                 _selectedMembership = null;
             }
         }
+        // Reapply voucher discount if Amount type
+        if (_selectedVoucher?.Type == VoucherType.Amount)
+            Appointment.TotalAmount = Math.Max(0, _basePrice - (_selectedVoucher.AmountValue ?? 0));
     }
 
     private void OnMembershipChanged(ChangeEventArgs e)
@@ -167,6 +219,23 @@
             Appointment.ClientMembershipId = null;
             _selectedMembership = null;
             OnServiceChanged();
+        }
+    }
+
+    private void OnVoucherChanged(ChangeEventArgs e)
+    {
+        if (int.TryParse(e.Value?.ToString(), out var id) && id > 0)
+        {
+            Appointment.VoucherId = id;
+            _selectedVoucher = _availableVouchers.FirstOrDefault(v => v.Id == id);
+            if (_selectedVoucher?.Type == VoucherType.Amount)
+                Appointment.TotalAmount = Math.Max(0, _basePrice - (_selectedVoucher.AmountValue ?? 0));
+        }
+        else
+        {
+            Appointment.VoucherId = null;
+            _selectedVoucher = null;
+            Appointment.TotalAmount = _basePrice;
         }
     }
 
