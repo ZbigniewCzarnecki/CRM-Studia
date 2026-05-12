@@ -1,6 +1,8 @@
 @inject IAppointmentService AppointmentService
 @inject IClientService ClientService
 @inject IServiceCrmService ServiceCrmService
+@inject IMembershipService MembershipService
+@using SalonCRM.Web.Data.Entities
 
 <div class="modal-backdrop">
     <div class="modal-dialog-custom">
@@ -14,7 +16,7 @@
                 <div class="row g-3">
                     <div class="col-md-6">
                         <label class="form-label">Klient *</label>
-                        <InputSelect @bind-Value="Appointment.ClientName" class="form-select">
+                        <InputSelect @bind-Value="Appointment.ClientName" @bind-Value:after="OnClientChanged" class="form-select">
                             <option value="">-- wybierz klienta --</option>
                             @foreach (var c in _clients)
                             {
@@ -46,12 +48,32 @@
                         <label class="form-label">Status</label>
                         <InputSelect @bind-Value="Appointment.Status" class="form-select">
                             <option value="@AppointmentStatus.Planned">Zaplanowana</option>
-                            <option value="@AppointmentStatus.Confirmed">Potwierdzona</option>
-                            <option value="@AppointmentStatus.Completed">Zakończona</option>
+                            <option value="@AppointmentStatus.Completed">Zrealizowana</option>
                             <option value="@AppointmentStatus.Cancelled">Anulowana</option>
                             <option value="@AppointmentStatus.NoShow">Nieobecność</option>
                         </InputSelect>
                     </div>
+                    @if (_activeMemberships.Any())
+                    {
+                        <div class="col-12">
+                            <label class="form-label">Karnet</label>
+                            <select class="form-select" value="@(Appointment.ClientMembershipId?.ToString() ?? "")" @onchange="OnMembershipChanged">
+                                <option value="">-- bez karnetu --</option>
+                                @foreach (var m in _activeMemberships)
+                                {
+                                    <option value="@m.Id">
+                                        @m.PackageName (@m.RemainingEntries/@m.TotalEntries wejść, ważny do @m.ExpiresAt.ToString("dd.MM.yyyy"))
+                                    </option>
+                                }
+                            </select>
+                            @if (_selectedMembership != null && _selectedMembership.RemainingEntries == 1)
+                            {
+                                <div class="alert alert-warning mt-2 py-1 px-2 small mb-0">
+                                    <i class="bi bi-exclamation-triangle-fill me-1"></i>Ostatnie wejście w tym karnecie!
+                                </div>
+                            }
+                        </div>
+                    }
                     <div class="col-12">
                         <label class="form-label">Notatki do wizyty</label>
                         <InputTextArea @bind-Value="Appointment.Notes" class="form-control" rows="2" placeholder="Uwagi, preferencje, informacje dla pracownika..." />
@@ -73,15 +95,40 @@
 
     private List<ClientEntity> _clients = [];
     private List<ServiceEntity> _services = [];
+    private List<ClientMembershipEntity> _activeMemberships = [];
+    private ClientMembershipEntity? _selectedMembership;
 
     protected override async Task OnInitializedAsync()
     {
         _clients = await ClientService.GetAllAsync();
         _services = await ServiceCrmService.GetAllAsync();
 
-        // Pre-fill price/duration when service is already set (e.g. click from calendar)
+        if (!string.IsNullOrEmpty(Appointment.ClientName))
+            await LoadMemberships();
+
         if (!string.IsNullOrEmpty(Appointment.ServiceName) && Appointment.TotalAmount == 0)
             OnServiceChanged();
+    }
+
+    private async Task OnClientChanged()
+    {
+        Appointment.ClientMembershipId = null;
+        _selectedMembership = null;
+        await LoadMemberships();
+    }
+
+    private async Task LoadMemberships()
+    {
+        var client = _clients.FirstOrDefault(c => $"{c.FirstName} {c.LastName}" == Appointment.ClientName);
+        if (client == null) { _activeMemberships = []; return; }
+
+        var all = await MembershipService.GetActiveClientMembershipsAsync(client.Id);
+        _activeMemberships = string.IsNullOrEmpty(Appointment.ServiceName)
+            ? all
+            : all.Where(m => string.IsNullOrEmpty(m.ServiceName) || m.ServiceName == Appointment.ServiceName).ToList();
+
+        if (Appointment.ClientMembershipId.HasValue)
+            _selectedMembership = _activeMemberships.FirstOrDefault(m => m.Id == Appointment.ClientMembershipId.Value);
     }
 
     private void OnServiceChanged()
@@ -89,8 +136,37 @@
         var service = _services.FirstOrDefault(s => s.Name == Appointment.ServiceName);
         if (service != null)
         {
-            Appointment.TotalAmount = service.Price;
+            if (Appointment.ClientMembershipId == null)
+                Appointment.TotalAmount = service.Price;
             Appointment.DurationMinutes = service.DurationMinutes;
+        }
+        // Filter memberships by selected service
+        if (_activeMemberships.Any())
+        {
+            _activeMemberships = _activeMemberships
+                .Where(m => string.IsNullOrEmpty(m.ServiceName) || m.ServiceName == Appointment.ServiceName)
+                .ToList();
+            if (!_activeMemberships.Any(m => m.Id == Appointment.ClientMembershipId))
+            {
+                Appointment.ClientMembershipId = null;
+                _selectedMembership = null;
+            }
+        }
+    }
+
+    private void OnMembershipChanged(ChangeEventArgs e)
+    {
+        if (int.TryParse(e.Value?.ToString(), out var id) && id > 0)
+        {
+            Appointment.ClientMembershipId = id;
+            _selectedMembership = _activeMemberships.FirstOrDefault(m => m.Id == id);
+            Appointment.TotalAmount = 0;
+        }
+        else
+        {
+            Appointment.ClientMembershipId = null;
+            _selectedMembership = null;
+            OnServiceChanged();
         }
     }
 

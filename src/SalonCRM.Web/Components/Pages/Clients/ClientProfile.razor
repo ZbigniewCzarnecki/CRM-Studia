@@ -5,8 +5,10 @@
 @inject IAppointmentService AppointmentService
 @inject ILoyaltyService LoyaltyService
 @inject ISettingsService SettingsService
+@inject IMembershipService MembershipService
 @inject NavigationManager Nav
 @inject AuthenticationStateProvider AuthStateProvider
+@using SalonCRM.Web.Data.Entities
 
 <PageTitle>Profil klientki — SalonCRM</PageTitle>
 
@@ -54,11 +56,11 @@ else
     </div>
 
     <div class="row g-3 mb-2 text-muted small">
-        <div class="col-auto">📞 @(string.IsNullOrWhiteSpace(_client.PhoneNumber) ? "—" : _client.PhoneNumber)</div>
-        <div class="col-auto">✉️ @_client.Email</div>
+        <div class="col-auto"><i class="bi bi-telephone-fill me-1"></i>@(string.IsNullOrWhiteSpace(_client.PhoneNumber) ? "—" : _client.PhoneNumber)</div>
+        <div class="col-auto"><i class="bi bi-envelope-fill me-1"></i>@_client.Email</div>
         @if (!string.IsNullOrWhiteSpace(_client.Notes))
         {
-            <div class="col-12">📝 @_client.Notes</div>
+            <div class="col-12"><i class="bi bi-journal-text me-1"></i>@_client.Notes</div>
         }
     </div>
 
@@ -76,15 +78,15 @@ else
         <div class="card-body">
             @if (_stampsTotal >= _settings.LoyaltyStampsForReward)
             {
-                <div class="alert alert-success mb-3">🎉 Komplet pieczątek! Klientka zasługuje na nagrodę.</div>
+                <div class="alert alert-success mb-3"><i class="bi bi-trophy-fill me-2"></i>Komplet pieczątek! Klientka zasługuje na nagrodę.</div>
             }
             <div class="loyalty-grid">
                 @for (int i = 0; i < _settings.LoyaltyStampsForReward; i++)
                 {
                     var filled = i < _stampsTotal;
                     <div class="loyalty-stamp @(filled ? "loyalty-stamp-filled" : "loyalty-stamp-empty")">
-                        @if (filled) { <span>⭐</span> }
-                        else { <span class="text-muted">○</span> }
+                        @if (filled) { <i class="bi bi-star-fill" style="color:var(--salon-pink)"></i> }
+                        else { <i class="bi bi-star" style="color:#d1d5db"></i> }
                     </div>
                 }
             </div>
@@ -109,6 +111,72 @@ else
                         </tbody>
                     </table>
                 </div>
+            }
+        </div>
+    </div>
+
+    <!-- Karnety -->
+    <div class="card mb-4">
+        <div class="card-header d-flex justify-content-between align-items-center">
+            <strong>Karnety</strong>
+            <button class="btn btn-sm btn-outline-primary" @onclick="() => _showAssignForm = true">+ Dodaj karnet</button>
+        </div>
+        <div class="card-body p-0">
+            @if (!_memberships.Any())
+            {
+                <div class="p-3 text-muted">Brak przypisanych karnetów.</div>
+            }
+            else
+            {
+                <table class="table table-hover mb-0">
+                    <thead>
+                        <tr>
+                            <th>Pakiet</th>
+                            <th>Usługa</th>
+                            <th>Wejścia</th>
+                            <th>Ważny do</th>
+                            <th>Status</th>
+                            <th></th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var m in _memberships)
+                        {
+                            <tr class="@(!m.IsActive ? "text-muted" : "")">
+                                <td>@m.PackageName</td>
+                                <td>@m.ServiceName</td>
+                                <td>
+                                    @if (m.IsActive && m.RemainingEntries == 1)
+                                    {
+                                        <span class="badge bg-warning text-dark me-1">!</span>
+                                    }
+                                    @m.RemainingEntries / @m.TotalEntries
+                                </td>
+                                <td>@m.ExpiresAt.ToString("dd.MM.yyyy")</td>
+                                <td>
+                                    @if (m.IsActive)
+                                    {
+                                        <span class="badge bg-success">Aktywny</span>
+                                    }
+                                    else if (m.IsExpired)
+                                    {
+                                        <span class="badge bg-secondary">Wygasły</span>
+                                    }
+                                    else
+                                    {
+                                        <span class="badge bg-secondary">Wyczerpany</span>
+                                    }
+                                </td>
+                                <td>
+                                    @if (m.IsActive)
+                                    {
+                                        <button class="btn btn-sm btn-outline-secondary" @onclick="() => OpenExtend(m)">Przedłuż</button>
+                                    }
+                                </td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
             }
         </div>
     </div>
@@ -169,6 +237,66 @@ else
     </div>
 }
 
+@if (_showAssignForm)
+{
+    <div class="modal-backdrop">
+        <div class="modal-dialog-custom">
+            <div class="modal-header-custom">
+                <h5>Dodaj karnet</h5>
+                <button class="btn-close" @onclick="() => _showAssignForm = false"></button>
+            </div>
+            <div class="modal-body-custom">
+                <div class="mb-3">
+                    <label class="form-label">Pakiet *</label>
+                    <select class="form-select" @bind="_assignPackageId">
+                        <option value="0">-- wybierz pakiet --</option>
+                        @foreach (var pkg in _allPackages)
+                        {
+                            <option value="@pkg.Id">@pkg.Name (@pkg.TotalEntries wejść, @pkg.ValidityMonths mies.)</option>
+                        }
+                    </select>
+                </div>
+                <div class="mb-3">
+                    <label class="form-label">Notatka (opcjonalnie)</label>
+                    <textarea class="form-control" rows="2" @bind="_assignNotes" placeholder="np. zakupiony promocyjnie..."></textarea>
+                </div>
+            </div>
+            <div class="modal-footer-custom">
+                <button class="btn btn-primary" @onclick="AssignMembership" disabled="@(_assignPackageId == 0)">Przypisz</button>
+                <button class="btn btn-secondary ms-2" @onclick="() => _showAssignForm = false">Anuluj</button>
+            </div>
+        </div>
+    </div>
+}
+
+@if (_showExtendForm && _extendTarget != null)
+{
+    <div class="modal-backdrop">
+        <div class="modal-dialog-custom" style="max-width:420px">
+            <div class="modal-header-custom">
+                <h5>Przedłuż karnet</h5>
+                <button class="btn-close" @onclick="() => _showExtendForm = false"></button>
+            </div>
+            <div class="modal-body-custom">
+                <div class="mb-1 fw-bold">@_extendTarget.PackageName</div>
+                <div class="text-muted small mb-3">Aktualnie ważny do: @_extendTarget.ExpiresAt.ToString("dd.MM.yyyy")</div>
+                <div class="mb-3">
+                    <label class="form-label">Przedłuż o (miesiące)</label>
+                    <input type="number" class="form-control" min="1" max="24" @bind="_extendMonths" />
+                </div>
+                <div class="mb-3">
+                    <label class="form-label">Powód przedłużenia</label>
+                    <input type="text" class="form-control" @bind="_extendReason" placeholder="np. choroba, urlop..." />
+                </div>
+            </div>
+            <div class="modal-footer-custom">
+                <button class="btn btn-primary" @onclick="ExtendMembership">Przedłuż</button>
+                <button class="btn btn-secondary ms-2" @onclick="() => _showExtendForm = false">Anuluj</button>
+            </div>
+        </div>
+    </div>
+}
+
 @code {
     [Parameter]
     public int Id { get; set; }
@@ -177,6 +305,8 @@ else
     private SalonCRM.Web.Data.Entities.SalonSettings _settings = new();
     private List<AppointmentEntity> _appointments = [];
     private List<SalonCRM.Web.Data.Entities.LoyaltyStamp> _stamps = [];
+    private List<ClientMembershipEntity> _memberships = [];
+    private List<MembershipPackageEntity> _allPackages = [];
     private int _stampsTotal;
     private decimal _totalSpent;
     private string? _favoriteService;
@@ -184,6 +314,15 @@ else
     private bool _showStampForm;
     private string _stampNote = string.Empty;
     private string _currentUserId = "";
+
+    private bool _showAssignForm;
+    private int _assignPackageId;
+    private string _assignNotes = string.Empty;
+
+    private bool _showExtendForm;
+    private ClientMembershipEntity? _extendTarget;
+    private int _extendMonths = 1;
+    private string _extendReason = string.Empty;
 
     protected override async Task OnInitializedAsync()
     {
@@ -207,6 +346,9 @@ else
                 .OrderByDescending(g => g.Count())
                 .Select(g => g.Key)
                 .FirstOrDefault();
+            _memberships = await MembershipService.GetClientMembershipsAsync(Id);
+            _allPackages = await MembershipService.GetAllPackagesAsync();
+            _allPackages = _allPackages.Where(p => p.IsActive).ToList();
         }
 
         _loading = false;
@@ -228,11 +370,38 @@ else
         _stampsTotal = 0;
     }
 
+    private async Task AssignMembership()
+    {
+        if (_assignPackageId == 0) return;
+        await MembershipService.AssignAsync(Id, _assignPackageId, _assignNotes);
+        _showAssignForm = false;
+        _assignPackageId = 0;
+        _assignNotes = string.Empty;
+        _memberships = await MembershipService.GetClientMembershipsAsync(Id);
+    }
+
+    private void OpenExtend(ClientMembershipEntity m)
+    {
+        _extendTarget = m;
+        _extendMonths = 1;
+        _extendReason = string.Empty;
+        _showExtendForm = true;
+    }
+
+    private async Task ExtendMembership()
+    {
+        if (_extendTarget == null) return;
+        await MembershipService.ExtendAsync(_extendTarget.Id, _extendMonths, _extendReason);
+        _showExtendForm = false;
+        _extendTarget = null;
+        _memberships = await MembershipService.GetClientMembershipsAsync(Id);
+    }
+
     private static string StatusLabel(AppointmentStatus s) => s switch
     {
         AppointmentStatus.Planned => "Zaplanowana",
-        AppointmentStatus.Confirmed => "Potwierdzona",
-        AppointmentStatus.Completed => "Zakończona",
+        AppointmentStatus.Confirmed => "Zaplanowana",
+        AppointmentStatus.Completed => "Zrealizowana",
         AppointmentStatus.Cancelled => "Anulowana",
         AppointmentStatus.NoShow => "Nieobecność",
         _ => s.ToString()

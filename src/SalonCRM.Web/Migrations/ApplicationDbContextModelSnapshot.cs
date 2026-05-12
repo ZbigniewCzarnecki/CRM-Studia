@@ -224,6 +224,9 @@ namespace SalonCRM.Web.Migrations
                         .HasMaxLength(200)
                         .HasColumnType("TEXT");
 
+                    b.Property<int?>("ClientMembershipId")
+                        .HasColumnType("INTEGER");
+
                     b.Property<DateTime>("Date")
                         .HasColumnType("TEXT");
 
@@ -249,6 +252,82 @@ namespace SalonCRM.Web.Migrations
                     b.HasKey("Id");
 
                     b.ToTable("Appointments");
+                });
+
+            modelBuilder.Entity("SalonCRM.Web.Data.Entities.ClientMembershipEntity", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("INTEGER");
+
+                    b.Property<DateTime>("AssignedAt")
+                        .HasColumnType("TEXT");
+
+                    b.Property<int>("ClientId")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<DateTime>("ExpiresAt")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Notes")
+                        .IsRequired()
+                        .HasMaxLength(500)
+                        .HasColumnType("TEXT");
+
+                    b.Property<int>("PackageId")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("PackageName")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("TEXT");
+
+                    b.Property<int>("RemainingEntries")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("ServiceName")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("TEXT");
+
+                    b.Property<int>("TotalEntries")
+                        .HasColumnType("INTEGER");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("ClientId");
+
+                    b.ToTable("ClientMemberships");
+                });
+
+            modelBuilder.Entity("SalonCRM.Web.Data.Entities.MembershipPackageEntity", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("INTEGER");
+
+                    b.Property<bool>("IsActive")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("ServiceName")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("TEXT");
+
+                    b.Property<int>("TotalEntries")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<int>("ValidityMonths")
+                        .HasColumnType("INTEGER");
+
+                    b.HasKey("Id");
+
+                    b.ToTable("MembershipPackages");
                 });
 
             modelBuilder.Entity("SalonCRM.Web.Data.Entities.ClientEntity", b =>
@@ -487,6 +566,17 @@ namespace SalonCRM.Web.Migrations
                         .HasForeignKey("UserId")
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
+                });
+
+            modelBuilder.Entity("SalonCRM.Web.Data.Entities.ClientMembershipEntity", b =>
+                {
+                    b.HasOne("SalonCRM.Web.Data.Entities.ClientEntity", "Client")
+                        .WithMany()
+                        .HasForeignKey("ClientId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Client");
                 });
 
             modelBuilder.Entity("SalonCRM.Web.Data.Entities.LoyaltyStamp", b =>

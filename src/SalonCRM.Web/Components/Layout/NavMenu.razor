@@ -1,27 +1,32 @@
 <nav class="nav-menu">
     <NavLink class="nav-link" href="" Match="NavLinkMatch.All">
-        <span class="nav-icon">📊</span> Dashboard
+        <i class="nav-icon bi bi-speedometer2"></i> Dashboard
     </NavLink>
     <NavLink class="nav-link" href="calendar">
-        <span class="nav-icon">🗓️</span> Kalendarz
+        <i class="nav-icon bi bi-calendar3"></i> Kalendarz
     </NavLink>
     <NavLink class="nav-link" href="clients">
-        <span class="nav-icon">👤</span> Klienci
+        <i class="nav-icon bi bi-person-fill"></i> Klienci
     </NavLink>
     <NavLink class="nav-link" href="services">
-        <span class="nav-icon">✂️</span> Usługi
+        <i class="nav-icon bi bi-scissors"></i> Usługi
     </NavLink>
     <NavLink class="nav-link" href="appointments">
-        <span class="nav-icon">📅</span> Wizyty
+        <i class="nav-icon bi bi-calendar-check"></i> Wizyty
     </NavLink>
     <AuthorizeView Roles="Admin">
+        <NavLink class="nav-link" href="karnety">
+            <i class="nav-icon bi bi-card-checklist"></i> Karnety
+        </NavLink>
+    </AuthorizeView>
+    <AuthorizeView Roles="Admin">
         <NavLink class="nav-link" href="users">
-            <span class="nav-icon">👥</span> Użytkownicy
+            <i class="nav-icon bi bi-people-fill"></i> Użytkownicy
         </NavLink>
     </AuthorizeView>
     <AuthorizeView Roles="Admin">
         <NavLink class="nav-link" href="settings">
-            <span class="nav-icon">⚙️</span> Ustawienia
+            <i class="nav-icon bi bi-gear-fill"></i> Ustawienia
         </NavLink>
     </AuthorizeView>
 </nav>

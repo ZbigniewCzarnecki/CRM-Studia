@@ -1,0 +1,188 @@
+@page "/karnety"
+@rendermode InteractiveServer
+@attribute [Microsoft.AspNetCore.Authorization.Authorize(Roles = "Admin")]
+@inject IMembershipService MembershipService
+@using SalonCRM.Web.Data.Entities
+
+<PageTitle>Karnety — SalonCRM</PageTitle>
+
+<div class="page-header">
+    <h1>Karnety</h1>
+    <button class="btn btn-primary" @onclick="OpenAdd">+ Nowy pakiet</button>
+</div>
+
+@if (_loading)
+{
+    <div class="text-center py-4"><span class="spinner-border text-primary"></span></div>
+}
+else if (!_packages.Any())
+{
+    <div class="empty-state">Brak pakietów karnetów. Dodaj pierwszy pakiet klikając „Nowy pakiet".</div>
+}
+else
+{
+    <div class="table-responsive">
+        <table class="table table-hover">
+            <thead>
+                <tr>
+                    <th>Nazwa</th>
+                    <th>Usługa</th>
+                    <th>Wejścia</th>
+                    <th>Ważność</th>
+                    <th>Status</th>
+                    <th></th>
+                </tr>
+            </thead>
+            <tbody>
+                @foreach (var pkg in _packages)
+                {
+                    <tr>
+                        <td><strong>@pkg.Name</strong></td>
+                        <td>@(string.IsNullOrWhiteSpace(pkg.ServiceName) ? "—" : pkg.ServiceName)</td>
+                        <td>@pkg.TotalEntries wejść</td>
+                        <td>@pkg.ValidityMonths mies.</td>
+                        <td>
+                            <span class="badge @(pkg.IsActive ? "bg-success" : "bg-secondary")">
+                                @(pkg.IsActive ? "Aktywny" : "Nieaktywny")
+                            </span>
+                        </td>
+                        <td class="text-end">
+                            <button class="btn btn-sm btn-outline-primary me-1" @onclick="() => OpenEdit(pkg)">Edytuj</button>
+                            <button class="btn btn-sm btn-outline-danger" @onclick="() => ConfirmDelete(pkg)">Usuń</button>
+                        </td>
+                    </tr>
+                }
+            </tbody>
+        </table>
+    </div>
+}
+
+@if (_showForm)
+{
+    <div class="modal-backdrop">
+        <div class="modal-dialog-custom">
+            <div class="modal-header-custom">
+                <h5>@(_editing.Id == 0 ? "Nowy pakiet karnetu" : "Edytuj pakiet")</h5>
+                <button class="btn-close" @onclick="CloseForm"></button>
+            </div>
+            <EditForm Model="_editing" OnValidSubmit="Save" FormName="package-form">
+                <DataAnnotationsValidator />
+                <div class="modal-body-custom">
+                    <div class="mb-3">
+                        <label class="form-label">Nazwa pakietu *</label>
+                        <InputText @bind-Value="_editing.Name" class="form-control" placeholder="np. Karnet 6 wejść Liposukcja" />
+                        <ValidationMessage For="() => _editing.Name" />
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Powiązana usługa</label>
+                        <InputText @bind-Value="_editing.ServiceName" class="form-control" placeholder="np. Liposukcja kawitacyjna" />
+                    </div>
+                    <div class="row g-3">
+                        <div class="col-6">
+                            <label class="form-label">Liczba wejść</label>
+                            <InputNumber @bind-Value="_editing.TotalEntries" class="form-control" min="1" />
+                        </div>
+                        <div class="col-6">
+                            <label class="form-label">Ważność (miesiące)</label>
+                            <InputNumber @bind-Value="_editing.ValidityMonths" class="form-control" min="1" />
+                        </div>
+                    </div>
+                    <div class="mt-3">
+                        <div class="form-check">
+                            <InputCheckbox @bind-Value="_editing.IsActive" class="form-check-input" id="isActive" />
+                            <label class="form-check-label" for="isActive">Aktywny (widoczny przy przypisywaniu klientom)</label>
+                        </div>
+                    </div>
+                </div>
+                <div class="modal-footer-custom">
+                    <button type="submit" class="btn btn-primary" disabled="@_saving">
+                        @if (_saving) { <span class="spinner-border spinner-border-sm me-1"></span> }
+                        Zapisz
+                    </button>
+                    <button type="button" class="btn btn-secondary ms-2" @onclick="CloseForm">Anuluj</button>
+                </div>
+            </EditForm>
+        </div>
+    </div>
+}
+
+@if (_deleteTarget != null)
+{
+    <div class="modal-backdrop">
+        <div class="modal-dialog-custom" style="max-width:400px">
+            <div class="modal-header-custom">
+                <h5>Usuń pakiet</h5>
+                <button class="btn-close" @onclick="() => _deleteTarget = null"></button>
+            </div>
+            <div class="modal-body-custom">
+                Czy na pewno chcesz usunąć pakiet <strong>@_deleteTarget.Name</strong>?
+                <div class="text-muted small mt-2">Przypisane klientom karnety pozostaną niezmienione.</div>
+            </div>
+            <div class="modal-footer-custom">
+                <button class="btn btn-danger" @onclick="DeleteConfirmed">Usuń</button>
+                <button class="btn btn-secondary ms-2" @onclick="() => _deleteTarget = null">Anuluj</button>
+            </div>
+        </div>
+    </div>
+}
+
+@code {
+    private List<MembershipPackageEntity> _packages = [];
+    private bool _loading = true;
+    private bool _saving;
+    private bool _showForm;
+    private MembershipPackageEntity _editing = new();
+    private MembershipPackageEntity? _deleteTarget;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await Load();
+        _loading = false;
+    }
+
+    private async Task Load() => _packages = await MembershipService.GetAllPackagesAsync();
+
+    private void OpenAdd()
+    {
+        _editing = new MembershipPackageEntity { TotalEntries = 6, ValidityMonths = 6, IsActive = true };
+        _showForm = true;
+    }
+
+    private void OpenEdit(MembershipPackageEntity pkg)
+    {
+        _editing = new MembershipPackageEntity
+        {
+            Id = pkg.Id,
+            Name = pkg.Name,
+            ServiceName = pkg.ServiceName,
+            TotalEntries = pkg.TotalEntries,
+            ValidityMonths = pkg.ValidityMonths,
+            IsActive = pkg.IsActive
+        };
+        _showForm = true;
+    }
+
+    private void CloseForm() => _showForm = false;
+
+    private async Task Save()
+    {
+        _saving = true;
+        if (_editing.Id == 0) await MembershipService.CreatePackageAsync(_editing);
+        else await MembershipService.UpdatePackageAsync(_editing);
+        _saving = false;
+        CloseForm();
+        await Load();
+    }
+
+    private void ConfirmDelete(MembershipPackageEntity pkg) => _deleteTarget = pkg;
+
+    private async Task DeleteConfirmed()
+    {
+        if (_deleteTarget != null)
+        {
+            await MembershipService.DeletePackageAsync(_deleteTarget.Id);
+            _deleteTarget = null;
+            await Load();
+        }
+    }
+}

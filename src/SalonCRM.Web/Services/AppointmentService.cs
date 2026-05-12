@@ -8,11 +8,13 @@ public class AppointmentService : IAppointmentService
 {
     private readonly ApplicationDbContext _db;
     private readonly ILoyaltyService _loyalty;
+    private readonly IMembershipService _membership;
 
-    public AppointmentService(ApplicationDbContext db, ILoyaltyService loyalty)
+    public AppointmentService(ApplicationDbContext db, ILoyaltyService loyalty, IMembershipService membership)
     {
         _db = db;
         _loyalty = loyalty;
+        _membership = membership;
     }
 
     public Task<List<AppointmentEntity>> GetAllAsync(CancellationToken ct = default) =>
@@ -52,7 +54,8 @@ public class AppointmentService : IAppointmentService
                 .SetProperty(a => a.TotalAmount, appt.TotalAmount)
                 .SetProperty(a => a.DurationMinutes, appt.DurationMinutes)
                 .SetProperty(a => a.Status, appt.Status)
-                .SetProperty(a => a.Notes, appt.Notes), ct);
+                .SetProperty(a => a.Notes, appt.Notes)
+                .SetProperty(a => a.ClientMembershipId, appt.ClientMembershipId), ct);
 
     public async Task DeleteAsync(int id, CancellationToken ct = default)
     {
@@ -73,6 +76,12 @@ public class AppointmentService : IAppointmentService
             .OrderBy(a => a.Date)
             .ToListAsync(ct);
 
+    public Task<List<AppointmentEntity>> GetByRangeAsync(DateTime from, DateTime to, CancellationToken ct = default) =>
+        _db.Appointments.AsNoTracking()
+            .Where(a => a.Date.Date >= from.Date && a.Date.Date <= to.Date)
+            .OrderBy(a => a.Date)
+            .ToListAsync(ct);
+
     public async Task UpdateStatusAsync(int id, AppointmentStatus status, CancellationToken ct = default)
     {
         await _db.Appointments
@@ -88,6 +97,9 @@ public class AppointmentService : IAppointmentService
                     .FirstOrDefaultAsync(c => (c.FirstName + " " + c.LastName) == appt.ClientName, ct);
                 if (client != null)
                     await _loyalty.AddStampAsync(client.Id, id, "", "", false, ct);
+
+                if (appt.ClientMembershipId.HasValue)
+                    await _membership.UseEntryAsync(appt.ClientMembershipId.Value, ct);
             }
         }
     }

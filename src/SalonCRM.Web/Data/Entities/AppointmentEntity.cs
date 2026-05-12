@@ -23,4 +23,6 @@ public class AppointmentEntity
 
     [MaxLength(2000)]
     public string Notes { get; set; } = string.Empty;
+
+    public int? ClientMembershipId { get; set; }
 }
