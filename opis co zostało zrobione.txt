@@ -137,6 +137,26 @@ Stos: Blazor Server .NET 8 + EF Core + SQLite + ASP.NET Core Identity
   app.css:
   - Styl .toast-notification z animacją fadeInUp
 
+[web-v5-hotfix] Naprawa: migracja AddClientConsents nie była wykrywana
+  Objaw:
+  - Po wdrożeniu v5 aplikacja rzucała SqliteException: 'no such column: c.ConsentEmail'
+  - dotnet ef database update mówił "database is already up to date"
+  - Migracja istniała w projekcie, ale db.Database.Migrate() jej nie aplikował
+  Diagnoza:
+  - dotnet ef migrations list pokazywał tylko 4 starsze migracje — nowa nie była widoczna
+  - Plik migracji był ręcznie utworzony (bez `dotnet ef migrations add`)
+  - Brakowało atrybutów, które normalnie są w autogenerowanym pliku .Designer.cs
+  Rozwiązanie:
+  - Dodano do klasy migracji dwa atrybuty:
+      [DbContext(typeof(ApplicationDbContext))]
+      [Migration("20260512000001_AddClientConsents")]
+  - Plus usingi: Microsoft.EntityFrameworkCore.Infrastructure, SalonCRM.Web.Data
+  - Po rebuildzie migracja pojawiła się w `dotnet ef migrations list` jako (Pending)
+  - dotnet ef database update wykonał ALTER TABLE i dodał kolumny
+  Wniosek na przyszłość:
+  - Ręcznie pisane migracje MUSZĄ mieć [DbContext] i [Migration] na klasie
+  - Lepsza praktyka: użyć `dotnet ef migrations add NazwaMigracji` — narzędzie samo wygeneruje .Designer.cs z poprawnymi atrybutami
+
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 █ PROBLEMY I ROZWIĄZANIA
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -169,6 +189,11 @@ Web:
  10. OffsetX w kalendarzu pobierany ze zdarzenia klikniętego child-elementu (.cal-slot)
      → Wynik: zły czas (zawsze 8:00 niezależnie od klikniętego slotu)
      → Rozwiązanie: @onclick na każdy .cal-slot z przechwyconym lokalnym slotIndex (nie MouseEventArgs)
+ 11. Ręcznie utworzony plik migracji EF Core nie był wykrywany przez framework
+     → Objaw: SqliteException 'no such column' przy starcie + `dotnet ef migrations list` jej nie pokazuje
+     → Przyczyna: brak atrybutów [DbContext] i [Migration] (zwykle są w autogenerowanym .Designer.cs)
+     → Rozwiązanie: dodać oba atrybuty bezpośrednio do klasy migracji w pliku .cs
+     → Lepsza praktyka: zawsze tworzyć migracje przez `dotnet ef migrations add NazwaMigracji`
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 █ DO UZUPEŁNIENIA PRZED ODDANIEM ZALICZENIA
