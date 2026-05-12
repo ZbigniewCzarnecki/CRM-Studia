@@ -27,4 +27,5 @@ public class AppointmentEntity
     public int? ClientMembershipId { get; set; }
 
     public int? VoucherId { get; set; }
+    public decimal? VoucherDeduction { get; set; }
 }

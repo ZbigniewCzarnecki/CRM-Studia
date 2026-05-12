@@ -2,6 +2,9 @@
 @rendermode InteractiveServer
 @attribute [Microsoft.AspNetCore.Authorization.Authorize]
 @inject IVoucherService VoucherService
+@inject IClientService ClientService
+@inject IServiceCrmService ServiceCrmService
+@inject IMembershipService MembershipService
 
 <PageTitle>Vouchery — SalonCRM</PageTitle>
 
@@ -42,9 +45,9 @@
                 <thead>
                     <tr>
                         <th>Kod</th>
-                        <th>Odbiorca</th>
+                        <th>Klient</th>
                         <th>Typ</th>
-                        <th>Wartość</th>
+                        <th>Wartość / Saldo</th>
                         <th>Ważny do</th>
                         <th>Status</th>
                         <th></th>
@@ -60,14 +63,28 @@
                             <td>
                                 @if (v.Type == VoucherType.Amount)
                                 {
-                                    @($"{v.AmountValue?.ToString("F0")} PLN")
+                                    @if (v.RemainingAmount.HasValue && v.RemainingAmount != v.AmountValue)
+                                    {
+                                        <span>@v.RemainingAmount?.ToString("F0") PLN</span>
+                                        <span class="text-muted small ms-1">(z @v.AmountValue?.ToString("F0") PLN)</span>
+                                    }
+                                    else
+                                    {
+                                        <span>@v.AmountValue?.ToString("F0") PLN</span>
+                                    }
                                 }
                                 else
                                 {
                                     @(string.IsNullOrEmpty(v.ServiceName) ? "—" : v.ServiceName)
                                 }
                             </td>
-                            <td>@v.ExpiresAt.ToString("dd.MM.yyyy")</td>
+                            <td>
+                                @v.ExpiresAt.ToString("dd.MM.yyyy")
+                                @if (v.IsActive && v.DaysUntilExpiry <= 7)
+                                {
+                                    <span class="badge bg-warning text-dark ms-1">@v.DaysUntilExpiry dni</span>
+                                }
+                            </td>
                             <td>
                                 @if (v.IsUsed)
                                 {
@@ -121,24 +138,60 @@
                                 <option value="@VoucherType.Service">Na usługę</option>
                             </InputSelect>
                         </div>
+
+                        <!-- Klient -->
                         <div class="col-12">
-                            <label class="form-label">Odbiorca</label>
-                            <InputText @bind-Value="_editing.RecipientName" class="form-control" placeholder="Imię i nazwisko odbiorcy" />
+                            <label class="form-label">Klient (odbiorca)</label>
+                            <div class="d-flex gap-2">
+                                <select class="form-select" value="@_editing.ClientId" @onchange="OnClientSelected">
+                                    <option value="">-- wybierz klienta --</option>
+                                    @foreach (var c in _clients)
+                                    {
+                                        <option value="@c.Id">@c.FirstName @c.LastName @(!string.IsNullOrEmpty(c.PhoneNumber) ? $"({c.PhoneNumber})" : "")</option>
+                                    }
+                                </select>
+                                <button type="button" class="btn btn-outline-secondary text-nowrap" @onclick="() => _showQuickClient = true" title="Dodaj nowego klienta">
+                                    <i class="bi bi-person-plus-fill"></i>
+                                </button>
+                            </div>
                         </div>
+
                         @if (_editing.Type == VoucherType.Amount)
                         {
                             <div class="col-md-6">
-                                <label class="form-label">Wartość (PLN)</label>
+                                <label class="form-label">Wartość nominalna (PLN)</label>
                                 <InputNumber @bind-Value="_editing.AmountValue" class="form-control" />
                             </div>
+                            @if (_editing.Id != 0)
+                            {
+                                <div class="col-md-6">
+                                    <label class="form-label">Saldo (PLN)</label>
+                                    <InputNumber @bind-Value="_editing.RemainingAmount" class="form-control" />
+                                </div>
+                            }
                         }
                         else
                         {
                             <div class="col-md-6">
-                                <label class="form-label">Nazwa usługi</label>
-                                <InputText @bind-Value="_editing.ServiceName" class="form-control" placeholder="np. Strzyżenie damskie" />
+                                <label class="form-label">Usługa / Karnet</label>
+                                <select class="form-select" @bind="_editing.ServiceName">
+                                    <option value="">-- wybierz usługę --</option>
+                                    @foreach (var s in _services)
+                                    {
+                                        <option value="@s.Name">@s.Name</option>
+                                    }
+                                    @if (_packages.Any())
+                                    {
+                                        <option disabled>──── Karnety ────</option>
+                                        @foreach (var p in _packages)
+                                        {
+                                            <option value="@p.Name">@p.Name</option>
+                                        }
+                                    }
+                                </select>
                             </div>
                         }
+
                         <div class="col-md-6">
                             <label class="form-label">Ważny do</label>
                             <InputDate @bind-Value="_editing.ExpiresAt" class="form-control" />
@@ -152,7 +205,7 @@
                             <div class="col-12">
                                 <div class="form-check">
                                     <InputCheckbox @bind-Value="_editing.IsUsed" class="form-check-input" id="isUsed" />
-                                    <label class="form-check-label" for="isUsed">Oznacz jako użyty</label>
+                                    <label class="form-check-label" for="isUsed">Oznacz jako w pełni użyty</label>
                                 </div>
                             </div>
                         }
@@ -163,6 +216,50 @@
                         @(_saving ? "Zapisywanie..." : "Zapisz")
                     </button>
                     <button type="button" class="btn btn-secondary ms-2" @onclick="CloseForm">Anuluj</button>
+                </div>
+            </EditForm>
+        </div>
+    </div>
+}
+
+@if (_showQuickClient)
+{
+    <div class="modal-backdrop" style="z-index:1060">
+        <div class="modal-dialog-custom" style="max-width:440px">
+            <div class="modal-header-custom">
+                <h5>Szybkie dodanie klienta</h5>
+                <button class="btn-close" @onclick="() => _showQuickClient = false"></button>
+            </div>
+            <EditForm Model="_quickClient" OnValidSubmit="SaveQuickClient" FormName="quick-client-form">
+                <DataAnnotationsValidator />
+                <div class="modal-body-custom">
+                    <div class="row g-3">
+                        <div class="col-6">
+                            <label class="form-label">Imię *</label>
+                            <InputText @bind-Value="_quickClient.FirstName" class="form-control" />
+                            <ValidationMessage For="() => _quickClient.FirstName" />
+                        </div>
+                        <div class="col-6">
+                            <label class="form-label">Nazwisko *</label>
+                            <InputText @bind-Value="_quickClient.LastName" class="form-control" />
+                            <ValidationMessage For="() => _quickClient.LastName" />
+                        </div>
+                        <div class="col-6">
+                            <label class="form-label">Telefon</label>
+                            <InputText @bind-Value="_quickClient.PhoneNumber" class="form-control" />
+                        </div>
+                        <div class="col-6">
+                            <label class="form-label">E-mail</label>
+                            <InputText @bind-Value="_quickClient.Email" class="form-control" />
+                            <ValidationMessage For="() => _quickClient.Email" />
+                        </div>
+                    </div>
+                </div>
+                <div class="modal-footer-custom">
+                    <button type="submit" class="btn btn-primary" disabled="@_quickSaving">
+                        @(_quickSaving ? "Zapisywanie..." : "Dodaj klienta")
+                    </button>
+                    <button type="button" class="btn btn-secondary ms-2" @onclick="() => _showQuickClient = false">Anuluj</button>
                 </div>
             </EditForm>
         </div>
@@ -191,6 +288,9 @@
 
 @code {
     private List<VoucherEntity> _vouchers = [];
+    private List<ClientEntity> _clients = [];
+    private List<ServiceEntity> _services = [];
+    private List<MembershipPackageEntity> _packages = [];
     private string _filter = "all";
     private bool _loading = true;
     private bool _showForm;
@@ -198,6 +298,10 @@
     private VoucherEntity? _deleteTarget;
     private bool _saving;
     private int _expiringCount;
+
+    private bool _showQuickClient;
+    private ClientEntity _quickClient = new();
+    private bool _quickSaving;
 
     private IEnumerable<VoucherEntity> Filtered => _filter switch
     {
@@ -209,15 +313,26 @@
 
     protected override async Task OnInitializedAsync()
     {
-        await LoadData();
+        var vTask = VoucherService.GetAllAsync();
+        var cTask = ClientService.GetAllAsync();
+        var sTask = ServiceCrmService.GetAllAsync();
+        var pTask = MembershipService.GetAllPackagesAsync();
+        var eTask = VoucherService.GetExpiringCountAsync(7);
+
+        await Task.WhenAll(vTask, cTask, sTask, pTask, eTask);
+
+        _vouchers = vTask.Result;
+        _clients = cTask.Result;
+        _services = sTask.Result;
+        _packages = pTask.Result.Where(p => p.IsActive).ToList();
+        _expiringCount = eTask.Result;
+        _loading = false;
     }
 
-    private async Task LoadData()
+    private async Task LoadVouchers()
     {
-        _loading = true;
         _vouchers = await VoucherService.GetAllAsync();
         _expiringCount = await VoucherService.GetExpiringCountAsync(7);
-        _loading = false;
     }
 
     private void OpenCreate()
@@ -233,9 +348,11 @@
         {
             Id = v.Id,
             Code = v.Code,
+            ClientId = v.ClientId,
             RecipientName = v.RecipientName,
             Type = v.Type,
             AmountValue = v.AmountValue,
+            RemainingAmount = v.RemainingAmount,
             ServiceName = v.ServiceName,
             ExpiresAt = v.ExpiresAt,
             Notes = v.Notes,
@@ -261,18 +378,55 @@
         _editing.Code = "V-" + DateTime.Now.ToString("yyMM") + "-" + suffix;
     }
 
+    private void OnClientSelected(ChangeEventArgs e)
+    {
+        if (int.TryParse(e.Value?.ToString(), out var id) && id > 0)
+        {
+            _editing.ClientId = id;
+            var client = _clients.FirstOrDefault(c => c.Id == id);
+            if (client != null)
+                _editing.RecipientName = $"{client.FirstName} {client.LastName}";
+        }
+        else
+        {
+            _editing.ClientId = null;
+            _editing.RecipientName = string.Empty;
+        }
+    }
+
+    private async Task SaveQuickClient()
+    {
+        _quickSaving = true;
+        try
+        {
+            var created = await ClientService.CreateAsync(_quickClient);
+            _clients = await ClientService.GetAllAsync();
+            _editing.ClientId = created.Id;
+            _editing.RecipientName = $"{created.FirstName} {created.LastName}";
+            _quickClient = new();
+            _showQuickClient = false;
+        }
+        finally
+        {
+            _quickSaving = false;
+        }
+    }
+
     private async Task SaveVoucher()
     {
         _saving = true;
         try
         {
+            if (_editing.Type == VoucherType.Amount && _editing.RemainingAmount == null)
+                _editing.RemainingAmount = _editing.AmountValue;
+
             if (_editing.Id == 0)
                 await VoucherService.CreateAsync(_editing);
             else
                 await VoucherService.UpdateAsync(_editing);
 
             CloseForm();
-            await LoadData();
+            await LoadVouchers();
         }
         finally
         {
@@ -287,6 +441,6 @@
         if (_deleteTarget == null) return;
         await VoucherService.DeleteAsync(_deleteTarget.Id);
         _deleteTarget = null;
-        await LoadData();
+        await LoadVouchers();
     }
 }

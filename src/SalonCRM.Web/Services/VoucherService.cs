@@ -14,7 +14,19 @@ public class VoucherService : IVoucherService
 
     public Task<List<VoucherEntity>> GetAvailableAsync(CancellationToken ct = default) =>
         _db.Vouchers.AsNoTracking()
-            .Where(v => !v.IsUsed && v.AppointmentId == null && v.ExpiresAt > DateTime.Now)
+            .Where(v => !v.IsUsed && v.ExpiresAt > DateTime.Now
+                && (v.Type == VoucherType.Amount
+                    ? (v.RemainingAmount ?? v.AmountValue ?? 0) > 0
+                    : v.AppointmentId == null))
+            .OrderBy(v => v.ExpiresAt)
+            .ToListAsync(ct);
+
+    public Task<List<VoucherEntity>> GetForClientAsync(int clientId, CancellationToken ct = default) =>
+        _db.Vouchers.AsNoTracking()
+            .Where(v => v.ClientId == clientId && !v.IsUsed && v.ExpiresAt > DateTime.Now
+                && (v.Type == VoucherType.Amount
+                    ? (v.RemainingAmount ?? v.AmountValue ?? 0) > 0
+                    : v.AppointmentId == null))
             .OrderBy(v => v.ExpiresAt)
             .ToListAsync(ct);
 
@@ -36,6 +48,8 @@ public class VoucherService : IVoucherService
     public async Task<VoucherEntity> CreateAsync(VoucherEntity voucher, CancellationToken ct = default)
     {
         voucher.CreatedAt = DateTime.Now;
+        if (voucher.Type == VoucherType.Amount && voucher.RemainingAmount == null)
+            voucher.RemainingAmount = voucher.AmountValue;
         _db.Vouchers.Add(voucher);
         await _db.SaveChangesAsync(ct);
         return voucher;
@@ -46,9 +60,11 @@ public class VoucherService : IVoucherService
             .Where(v => v.Id == voucher.Id)
             .ExecuteUpdateAsync(s => s
                 .SetProperty(v => v.Code, voucher.Code)
+                .SetProperty(v => v.ClientId, voucher.ClientId)
                 .SetProperty(v => v.RecipientName, voucher.RecipientName)
                 .SetProperty(v => v.Type, voucher.Type)
                 .SetProperty(v => v.AmountValue, voucher.AmountValue)
+                .SetProperty(v => v.RemainingAmount, voucher.RemainingAmount)
                 .SetProperty(v => v.ServiceName, voucher.ServiceName)
                 .SetProperty(v => v.ExpiresAt, voucher.ExpiresAt)
                 .SetProperty(v => v.Notes, voucher.Notes)

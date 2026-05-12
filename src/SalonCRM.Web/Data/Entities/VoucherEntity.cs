@@ -11,12 +11,16 @@ public class VoucherEntity
     [Required, MaxLength(50)]
     public string Code { get; set; } = string.Empty;
 
+    public int? ClientId { get; set; }
+
     [MaxLength(200)]
     public string RecipientName { get; set; } = string.Empty;
 
     public VoucherType Type { get; set; }
 
     public decimal? AmountValue { get; set; }
+
+    public decimal? RemainingAmount { get; set; }
 
     [MaxLength(200)]
     public string ServiceName { get; set; } = string.Empty;
@@ -38,6 +42,8 @@ public class VoucherEntity
     public int? AppointmentId { get; set; }
 
     public bool IsExpired => DateTime.Now > ExpiresAt;
-    public bool IsActive => !IsUsed && !IsExpired;
+    public bool IsActive => !IsUsed && !IsExpired
+        && (Type == VoucherType.Service || (RemainingAmount ?? AmountValue ?? 0) > 0);
     public int DaysUntilExpiry => (int)(ExpiresAt - DateTime.Now).TotalDays;
+    public decimal CurrentBalance => RemainingAmount ?? AmountValue ?? 0;
 }

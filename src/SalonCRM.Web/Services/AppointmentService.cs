@@ -45,14 +45,22 @@ public class AppointmentService : IAppointmentService
         if (appt.VoucherId.HasValue)
         {
             var v = await _db.Vouchers.FindAsync([appt.VoucherId.Value], ct);
-            if (v != null && v.AppointmentId == null && !v.IsUsed)
+            if (v != null && !v.IsUsed)
             {
-                v.AppointmentId = appt.Id;
                 if (v.Type == VoucherType.Amount)
                 {
-                    v.IsUsed = true;
-                    v.UsedAt = DateTime.Now;
-                    v.UsedInAppointment = $"{appt.ClientName} — {appt.ServiceName}";
+                    var deduction = appt.VoucherDeduction ?? 0;
+                    v.RemainingAmount = Math.Max(0, (v.RemainingAmount ?? v.AmountValue ?? 0) - deduction);
+                    if (v.RemainingAmount <= 0)
+                    {
+                        v.IsUsed = true;
+                        v.UsedAt = DateTime.Now;
+                        v.UsedInAppointment = $"{appt.ClientName} — {appt.ServiceName}";
+                    }
+                }
+                else
+                {
+                    v.AppointmentId = appt.Id;
                 }
                 await _db.SaveChangesAsync(ct);
             }
@@ -73,7 +81,8 @@ public class AppointmentService : IAppointmentService
                 .SetProperty(a => a.Status, appt.Status)
                 .SetProperty(a => a.Notes, appt.Notes)
                 .SetProperty(a => a.ClientMembershipId, appt.ClientMembershipId)
-                .SetProperty(a => a.VoucherId, appt.VoucherId), ct);
+                .SetProperty(a => a.VoucherId, appt.VoucherId)
+                .SetProperty(a => a.VoucherDeduction, appt.VoucherDeduction), ct);
 
     public async Task DeleteAsync(int id, CancellationToken ct = default)
     {

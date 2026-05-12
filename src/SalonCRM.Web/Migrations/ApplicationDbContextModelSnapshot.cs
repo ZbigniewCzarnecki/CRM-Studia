@@ -230,6 +230,9 @@ namespace SalonCRM.Web.Migrations
                     b.Property<int?>("VoucherId")
                         .HasColumnType("INTEGER");
 
+                    b.Property<decimal?>("VoucherDeduction")
+                        .HasColumnType("TEXT");
+
                     b.Property<DateTime>("Date")
                         .HasColumnType("TEXT");
 
@@ -526,10 +529,13 @@ namespace SalonCRM.Web.Migrations
                         .ValueGeneratedOnAdd()
                         .HasColumnType("INTEGER");
 
-                    b.Property<int?>("AmountValue")
+                    b.Property<decimal?>("AmountValue")
                         .HasColumnType("TEXT");
 
                     b.Property<int?>("AppointmentId")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<int?>("ClientId")
                         .HasColumnType("INTEGER");
 
                     b.Property<string>("Code")
@@ -554,6 +560,9 @@ namespace SalonCRM.Web.Migrations
                     b.Property<string>("RecipientName")
                         .IsRequired()
                         .HasMaxLength(200)
+                        .HasColumnType("TEXT");
+
+                    b.Property<decimal?>("RemainingAmount")
                         .HasColumnType("TEXT");
 
                     b.Property<string>("ServiceName")

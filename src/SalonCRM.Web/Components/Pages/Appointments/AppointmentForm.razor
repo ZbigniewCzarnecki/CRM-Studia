@@ -54,6 +54,7 @@
                             <option value="@AppointmentStatus.NoShow">Nieobecność</option>
                         </InputSelect>
                     </div>
+
                     @if (_activeMemberships.Any())
                     {
                         <div class="col-12">
@@ -75,33 +76,78 @@
                             }
                         </div>
                     }
-                    <div class="col-12">
-                        <label class="form-label">Voucher</label>
-                        <select class="form-select" value="@(Appointment.VoucherId?.ToString() ?? "")" @onchange="OnVoucherChanged">
-                            <option value="">-- bez vouchera --</option>
-                            @foreach (var v in _availableVouchers)
+
+                    @if (!string.IsNullOrEmpty(Appointment.ClientName))
+                    {
+                        <div class="col-12">
+                            <label class="form-label">Voucher klienta</label>
+                            @if (!_clientVouchers.Any() && Appointment.VoucherId == null)
                             {
-                                <option value="@v.Id">@v.Code — @v.RecipientName (@(v.Type == VoucherType.Amount ? v.AmountValue?.ToString("F0") + " PLN" : v.ServiceName), ważny do @v.ExpiresAt.ToString("dd.MM.yyyy"))</option>
-                            }
-                        </select>
-                        @if (_selectedVoucher != null)
-                        {
-                            @if (_selectedVoucher.Type == VoucherType.Amount)
-                            {
-                                <div class="alert alert-success py-1 px-2 small mt-2 mb-0">
-                                    <i class="bi bi-check-circle-fill me-1"></i>Voucher kwotowy — odliczenie: @_selectedVoucher.AmountValue PLN
-                                </div>
+                                <div class="text-muted small">Brak aktywnych voucherów dla tego klienta.</div>
                             }
                             else
                             {
-                                var matches = string.IsNullOrEmpty(_selectedVoucher.ServiceName) || _selectedVoucher.ServiceName == Appointment.ServiceName;
-                                <div class="alert @(matches ? "alert-success" : "alert-warning") py-1 px-2 small mt-2 mb-0">
-                                    <i class="bi bi-@(matches ? "check-circle-fill" : "exclamation-triangle-fill") me-1"></i>
-                                    Voucher na usługę: @_selectedVoucher.ServiceName@(!matches ? " (nie pasuje do wybranej usługi)" : "")
-                                </div>
+                                <select class="form-select" value="@(Appointment.VoucherId?.ToString() ?? "")" @onchange="OnVoucherChanged">
+                                    <option value="">-- bez vouchera --</option>
+                                    @foreach (var v in _clientVouchers)
+                                    {
+                                        <option value="@v.Id">
+                                            @v.Code —
+                                            @if (v.Type == VoucherType.Amount)
+                                            {
+                                                @($"saldo: {v.CurrentBalance:F0} PLN, ważny do {v.ExpiresAt:dd.MM.yyyy}")
+                                            }
+                                            else
+                                            {
+                                                @($"{v.ServiceName}, ważny do {v.ExpiresAt:dd.MM.yyyy}")
+                                            }
+                                        </option>
+                                    }
+                                </select>
+
+                                @if (_selectedVoucher != null)
+                                {
+                                    @if (_selectedVoucher.Type == VoucherType.Amount)
+                                    {
+                                        var deduction = Math.Min(_selectedVoucher.CurrentBalance, _basePrice);
+                                        var toPay = Math.Max(0, _basePrice - deduction);
+                                        var afterBalance = _selectedVoucher.CurrentBalance - deduction;
+                                        <div class="alert alert-success py-2 px-3 mt-2 mb-0 small">
+                                            <div><i class="bi bi-check-circle-fill me-1"></i><strong>Voucher kwotowy</strong> (saldo: @_selectedVoucher.CurrentBalance.ToString("F0") PLN)</div>
+                                            <div class="mt-1">Odliczenie: <strong>@deduction.ToString("F0") PLN</strong> · Do zapłaty: <strong>@toPay.ToString("F0") PLN</strong></div>
+                                            @if (afterBalance > 0)
+                                            {
+                                                <div class="text-success mt-1">Pozostanie na voucherze: @afterBalance.ToString("F0") PLN</div>
+                                            }
+                                        </div>
+                                    }
+                                    else
+                                    {
+                                        var svcOk = string.IsNullOrEmpty(_selectedVoucher.ServiceName)
+                                            || _selectedVoucher.ServiceName == Appointment.ServiceName;
+                                        @if (svcOk)
+                                        {
+                                            <div class="alert alert-success py-2 px-3 mt-2 mb-0 small">
+                                                <i class="bi bi-check-circle-fill me-1"></i>
+                                                Voucher na usługę: <strong>@_selectedVoucher.ServiceName</strong> — pasuje!
+                                            </div>
+                                        }
+                                        else
+                                        {
+                                            <div class="alert alert-danger py-2 px-3 mt-2 mb-0 small">
+                                                <i class="bi bi-x-circle-fill me-1"></i>
+                                                <strong>Błąd:</strong> Ten voucher jest na usługę
+                                                <strong>@_selectedVoucher.ServiceName</strong>,
+                                                a wybrana usługa to <strong>@Appointment.ServiceName</strong>.
+                                                Zmień usługę lub wybierz inny voucher.
+                                            </div>
+                                        }
+                                    }
+                                }
                             }
-                        }
-                    </div>
+                        </div>
+                    }
+
                     <div class="col-12">
                         <label class="form-label">Notatki do wizyty</label>
                         <InputTextArea @bind-Value="Appointment.Notes" class="form-control" rows="2" placeholder="Uwagi, preferencje, informacje dla pracownika..." />
@@ -109,7 +155,7 @@
                 </div>
             </div>
             <div class="modal-footer-custom">
-                <button type="submit" class="btn btn-primary">Zapisz</button>
+                <button type="submit" class="btn btn-primary" disabled="@HasVoucherError">Zapisz</button>
                 <button type="button" class="btn btn-secondary ms-2" @onclick="OnCancelled">Anuluj</button>
             </div>
         </EditForm>
@@ -125,44 +171,53 @@
     private List<ServiceEntity> _services = [];
     private List<ClientMembershipEntity> _activeMemberships = [];
     private ClientMembershipEntity? _selectedMembership;
-    private List<VoucherEntity> _availableVouchers = [];
+    private List<VoucherEntity> _clientVouchers = [];
     private VoucherEntity? _selectedVoucher;
     private decimal _basePrice;
+
+    private bool HasVoucherError =>
+        _selectedVoucher?.Type == VoucherType.Service
+        && !string.IsNullOrEmpty(_selectedVoucher.ServiceName)
+        && _selectedVoucher.ServiceName != Appointment.ServiceName;
 
     protected override async Task OnInitializedAsync()
     {
         _clients = await ClientService.GetAllAsync();
         _services = await ServiceCrmService.GetAllAsync();
 
+        var svc = _services.FirstOrDefault(s => s.Name == Appointment.ServiceName);
+        if (svc != null) _basePrice = svc.Price;
+
         if (!string.IsNullOrEmpty(Appointment.ClientName))
+        {
             await LoadMemberships();
+            await LoadClientVouchers();
+        }
 
         if (!string.IsNullOrEmpty(Appointment.ServiceName) && Appointment.TotalAmount == 0)
             OnServiceChanged();
-
-        _availableVouchers = await VoucherService.GetAvailableAsync();
-        if (Appointment.VoucherId.HasValue)
-        {
-            _selectedVoucher = _availableVouchers.FirstOrDefault(v => v.Id == Appointment.VoucherId.Value);
-            if (_selectedVoucher == null)
-            {
-                // editing existing appointment: load the already-used voucher too
-                var all = await VoucherService.GetAllAsync();
-                _selectedVoucher = all.FirstOrDefault(v => v.Id == Appointment.VoucherId.Value);
-                if (_selectedVoucher != null)
-                    _availableVouchers.Insert(0, _selectedVoucher);
-            }
-        }
-
-        var svc = _services.FirstOrDefault(s => s.Name == Appointment.ServiceName);
-        if (svc != null) _basePrice = svc.Price;
     }
 
     private async Task OnClientChanged()
     {
         Appointment.ClientMembershipId = null;
         _selectedMembership = null;
-        await LoadMemberships();
+        Appointment.VoucherId = null;
+        _selectedVoucher = null;
+        Appointment.VoucherDeduction = null;
+        if (!string.IsNullOrEmpty(Appointment.ClientName))
+        {
+            await LoadMemberships();
+            await LoadClientVouchers();
+        }
+        else
+        {
+            _activeMemberships = [];
+            _clientVouchers = [];
+        }
+        // Restore base price when client cleared
+        if (string.IsNullOrEmpty(Appointment.ClientName))
+            Appointment.TotalAmount = _basePrice;
     }
 
     private async Task LoadMemberships()
@@ -179,17 +234,43 @@
             _selectedMembership = _activeMemberships.FirstOrDefault(m => m.Id == Appointment.ClientMembershipId.Value);
     }
 
+    private async Task LoadClientVouchers()
+    {
+        var client = _clients.FirstOrDefault(c => $"{c.FirstName} {c.LastName}" == Appointment.ClientName);
+        if (client == null) { _clientVouchers = []; return; }
+
+        _clientVouchers = await VoucherService.GetForClientAsync(client.Id);
+
+        // When editing: include current voucher even if already reserved/partially used
+        if (Appointment.VoucherId.HasValue && !_clientVouchers.Any(v => v.Id == Appointment.VoucherId.Value))
+        {
+            var all = await VoucherService.GetAllAsync();
+            var current = all.FirstOrDefault(v => v.Id == Appointment.VoucherId.Value);
+            if (current != null)
+            {
+                _clientVouchers.Insert(0, current);
+                _selectedVoucher = current;
+            }
+        }
+        else if (Appointment.VoucherId.HasValue)
+        {
+            _selectedVoucher = _clientVouchers.FirstOrDefault(v => v.Id == Appointment.VoucherId.Value);
+        }
+    }
+
     private void OnServiceChanged()
     {
         var service = _services.FirstOrDefault(s => s.Name == Appointment.ServiceName);
         if (service != null)
         {
             _basePrice = service.Price;
+            Appointment.DurationMinutes = service.DurationMinutes;
+
             if (Appointment.ClientMembershipId == null)
                 Appointment.TotalAmount = service.Price;
-            Appointment.DurationMinutes = service.DurationMinutes;
         }
-        // Filter memberships by selected service
+
+        // Filter memberships by service
         if (_activeMemberships.Any())
         {
             _activeMemberships = _activeMemberships
@@ -201,9 +282,10 @@
                 _selectedMembership = null;
             }
         }
-        // Reapply voucher discount if Amount type
+
+        // Reapply voucher discount
         if (_selectedVoucher?.Type == VoucherType.Amount)
-            Appointment.TotalAmount = Math.Max(0, _basePrice - (_selectedVoucher.AmountValue ?? 0));
+            ApplyAmountVoucher();
     }
 
     private void OnMembershipChanged(ChangeEventArgs e)
@@ -227,20 +309,33 @@
         if (int.TryParse(e.Value?.ToString(), out var id) && id > 0)
         {
             Appointment.VoucherId = id;
-            _selectedVoucher = _availableVouchers.FirstOrDefault(v => v.Id == id);
+            _selectedVoucher = _clientVouchers.FirstOrDefault(v => v.Id == id);
+
             if (_selectedVoucher?.Type == VoucherType.Amount)
-                Appointment.TotalAmount = Math.Max(0, _basePrice - (_selectedVoucher.AmountValue ?? 0));
+                ApplyAmountVoucher();
+            // Service voucher: price unchanged, validation shows error if mismatch
         }
         else
         {
             Appointment.VoucherId = null;
             _selectedVoucher = null;
+            Appointment.VoucherDeduction = null;
             Appointment.TotalAmount = _basePrice;
         }
     }
 
+    private void ApplyAmountVoucher()
+    {
+        if (_selectedVoucher == null) return;
+        var deduction = Math.Min(_selectedVoucher.CurrentBalance, _basePrice);
+        Appointment.TotalAmount = Math.Max(0, _basePrice - deduction);
+        Appointment.VoucherDeduction = deduction;
+    }
+
     private async Task Save()
     {
+        if (HasVoucherError) return;
+
         if (Appointment.Id == 0) await AppointmentService.CreateAsync(Appointment);
         else await AppointmentService.UpdateAsync(Appointment);
         await OnSaved.InvokeAsync();
