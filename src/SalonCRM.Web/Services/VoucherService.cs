@@ -75,4 +75,10 @@ public class VoucherService : IVoucherService
         var v = await _db.Vouchers.FindAsync([id], ct);
         if (v != null) { _db.Vouchers.Remove(v); await _db.SaveChangesAsync(ct); }
     }
+
+    public Task<List<VoucherUseEntity>> GetUsageHistoryAsync(int voucherId, CancellationToken ct = default) =>
+        _db.VoucherUses.AsNoTracking()
+            .Where(u => u.VoucherId == voucherId)
+            .OrderByDescending(u => u.UsedAt)
+            .ToListAsync(ct);
 }

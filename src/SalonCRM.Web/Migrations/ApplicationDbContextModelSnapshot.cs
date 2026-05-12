@@ -523,6 +523,44 @@ namespace SalonCRM.Web.Migrations
                     b.ToTable("UserPermissions");
                 });
 
+            modelBuilder.Entity("SalonCRM.Web.Data.Entities.VoucherUseEntity", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("INTEGER");
+
+                    b.Property<decimal?>("AmountDeducted")
+                        .HasColumnType("TEXT");
+
+                    b.Property<int?>("AppointmentId")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<decimal?>("BalanceAfter")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("ClientName")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("ServiceName")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateTime>("UsedAt")
+                        .HasColumnType("TEXT");
+
+                    b.Property<int>("VoucherId")
+                        .HasColumnType("INTEGER");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("VoucherId");
+
+                    b.ToTable("VoucherUses");
+                });
+
             modelBuilder.Entity("SalonCRM.Web.Data.Entities.VoucherEntity", b =>
                 {
                     b.Property<int>("Id")
@@ -633,6 +671,15 @@ namespace SalonCRM.Web.Migrations
                     b.HasOne("SalonCRM.Web.Data.ApplicationUser", null)
                         .WithMany()
                         .HasForeignKey("UserId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("SalonCRM.Web.Data.Entities.VoucherUseEntity", b =>
+                {
+                    b.HasOne("SalonCRM.Web.Data.Entities.VoucherEntity", null)
+                        .WithMany()
+                        .HasForeignKey("VoucherId")
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
                 });

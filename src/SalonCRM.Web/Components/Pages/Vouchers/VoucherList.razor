@@ -24,11 +24,25 @@
 }
 
 <div class="card mt-3">
-    <div class="card-header d-flex gap-2">
-        <button class="btn btn-sm @(_filter == "all" ? "btn-primary" : "btn-outline-primary")" @onclick='() => _filter = "all"'>Wszystkie</button>
-        <button class="btn btn-sm @(_filter == "active" ? "btn-success" : "btn-outline-success")" @onclick='() => _filter = "active"'>Aktywne</button>
-        <button class="btn btn-sm @(_filter == "used" ? "btn-secondary" : "btn-outline-secondary")" @onclick='() => _filter = "used"'>Użyte</button>
-        <button class="btn btn-sm @(_filter == "expired" ? "btn-dark" : "btn-outline-dark")" @onclick='() => _filter = "expired"'>Wygasłe</button>
+    <div class="card-header d-flex flex-wrap gap-2 align-items-center justify-content-between">
+        <div class="d-flex gap-2 flex-wrap">
+            <button class="btn btn-sm @(_filter == "all" ? "btn-primary" : "btn-outline-primary")" @onclick='() => _filter = "all"'>Wszystkie</button>
+            <button class="btn btn-sm @(_filter == "active" ? "btn-success" : "btn-outline-success")" @onclick='() => _filter = "active"'>Aktywne</button>
+            <button class="btn btn-sm @(_filter == "used" ? "btn-secondary" : "btn-outline-secondary")" @onclick='() => _filter = "used"'>Użyte</button>
+            <button class="btn btn-sm @(_filter == "expired" ? "btn-dark" : "btn-outline-dark")" @onclick='() => _filter = "expired"'>Wygasłe</button>
+        </div>
+        <div class="d-flex align-items-center gap-2">
+            <span class="text-muted small">Sortuj:</span>
+            <select class="form-select form-select-sm" style="width:auto" @bind="_sortBy">
+                <option value="date">Data ważności</option>
+                <option value="client">Klient (A-Z)</option>
+                <option value="code">Kod</option>
+                <option value="balance">Saldo</option>
+            </select>
+            <button class="btn btn-sm btn-outline-secondary" @onclick="ToggleSort" title="@(_sortDesc ? "Malejąco" : "Rosnąco")">
+                <i class="bi bi-sort-@(_sortDesc ? "down" : "up")"></i>
+            </button>
+        </div>
     </div>
     <div class="card-body p-0">
         @if (_loading)
@@ -65,7 +79,7 @@
                                 {
                                     @if (v.RemainingAmount.HasValue && v.RemainingAmount != v.AmountValue)
                                     {
-                                        <span>@v.RemainingAmount?.ToString("F0") PLN</span>
+                                        <span class="@(v.RemainingAmount > 0 ? "" : "text-muted")">@v.RemainingAmount?.ToString("F0") PLN</span>
                                         <span class="text-muted small ms-1">(z @v.AmountValue?.ToString("F0") PLN)</span>
                                     }
                                     else
@@ -99,7 +113,10 @@
                                     <span class="badge bg-success">Aktywny</span>
                                 }
                             </td>
-                            <td class="text-end">
+                            <td class="text-end text-nowrap">
+                                <button class="btn btn-sm btn-outline-info me-1" @onclick="() => OpenHistory(v)" title="Historia użycia">
+                                    <i class="bi bi-clock-history"></i>
+                                </button>
                                 <button class="btn btn-sm btn-outline-primary me-1" @onclick="() => OpenEdit(v)">Edytuj</button>
                                 <button class="btn btn-sm btn-outline-danger" @onclick="() => ConfirmDelete(v)">Usuń</button>
                             </td>
@@ -111,6 +128,92 @@
     </div>
 </div>
 
+<!-- Modal: historia użycia -->
+@if (_historyVoucher != null)
+{
+    <div class="modal-backdrop">
+        <div class="modal-dialog-custom" style="max-width:680px">
+            <div class="modal-header-custom">
+                <h5>
+                    Historia vouchera <code>@_historyVoucher.Code</code>
+                    <span class="text-muted fw-normal ms-2 fs-6">(@_historyVoucher.RecipientName)</span>
+                </h5>
+                <button class="btn-close" @onclick="() => _historyVoucher = null"></button>
+            </div>
+            <div class="modal-body-custom">
+                @if (_historyVoucher.Type == VoucherType.Amount)
+                {
+                    <div class="d-flex gap-4 mb-3 small text-muted">
+                        <span>Nominał: <strong class="text-dark">@_historyVoucher.AmountValue?.ToString("F0") PLN</strong></span>
+                        <span>Aktualne saldo: <strong class="text-dark">@_historyVoucher.CurrentBalance.ToString("F0") PLN</strong></span>
+                        <span>Wykorzystano: <strong class="text-dark">@((_historyVoucher.AmountValue ?? 0) - _historyVoucher.CurrentBalance):F0 PLN</strong></span>
+                    </div>
+                }
+                @if (!_history.Any())
+                {
+                    <div class="text-muted text-center py-3">Brak historii użycia — voucher nie był jeszcze używany.</div>
+                }
+                else
+                {
+                    <table class="table table-sm mb-0">
+                        <thead>
+                            <tr>
+                                <th>Data</th>
+                                <th>Klient</th>
+                                <th>Usługa</th>
+                                @if (_historyVoucher.Type == VoucherType.Amount)
+                                {
+                                    <th class="text-end">Odliczone</th>
+                                    <th class="text-end">Saldo po</th>
+                                }
+                                else
+                                {
+                                    <th>Typ realizacji</th>
+                                }
+                            </tr>
+                        </thead>
+                        <tbody>
+                            @foreach (var u in _history)
+                            {
+                                <tr>
+                                    <td>@u.UsedAt.ToString("dd.MM.yyyy HH:mm")</td>
+                                    <td>@u.ClientName</td>
+                                    <td>@u.ServiceName</td>
+                                    @if (_historyVoucher.Type == VoucherType.Amount)
+                                    {
+                                        <td class="text-end">
+                                            @if (u.AmountDeducted.HasValue)
+                                            {
+                                                <span class="text-danger">-@u.AmountDeducted.Value.ToString("F0") PLN</span>
+                                            }
+                                            else { <span class="text-muted">—</span> }
+                                        </td>
+                                        <td class="text-end">
+                                            @if (u.BalanceAfter.HasValue)
+                                            {
+                                                <strong>@u.BalanceAfter.Value.ToString("F0") PLN</strong>
+                                            }
+                                            else { <span class="text-muted">—</span> }
+                                        </td>
+                                    }
+                                    else
+                                    {
+                                        <td><span class="badge bg-secondary">Zrealizowany</span></td>
+                                    }
+                                </tr>
+                            }
+                        </tbody>
+                    </table>
+                }
+            </div>
+            <div class="modal-footer-custom">
+                <button class="btn btn-secondary" @onclick="() => _historyVoucher = null">Zamknij</button>
+            </div>
+        </div>
+    </div>
+}
+
+<!-- Modal: formularz vouchera -->
 @if (_showForm && _editing != null)
 {
     <div class="modal-backdrop">
@@ -139,7 +242,6 @@
                             </InputSelect>
                         </div>
 
-                        <!-- Klient -->
                         <div class="col-12">
                             <label class="form-label">Klient (odbiorca)</label>
                             <div class="d-flex gap-2">
@@ -222,6 +324,7 @@
     </div>
 }
 
+<!-- Modal: szybkie dodanie klienta -->
 @if (_showQuickClient)
 {
     <div class="modal-backdrop" style="z-index:1060">
@@ -266,6 +369,7 @@
     </div>
 }
 
+<!-- Modal: potwierdzenie usunięcia -->
 @if (_deleteTarget != null)
 {
     <div class="modal-backdrop">
@@ -276,7 +380,7 @@
             </div>
             <div class="modal-body-custom">
                 <p>Czy na pewno chcesz usunąć voucher <strong>@_deleteTarget.Code</strong>?</p>
-                <p class="text-muted small">Tej operacji nie można cofnąć.</p>
+                <p class="text-muted small">Usunięcie spowoduje również usunięcie historii użycia tego vouchera.</p>
             </div>
             <div class="modal-footer-custom">
                 <button class="btn btn-danger" @onclick="DeleteConfirmed">Usuń</button>
@@ -292,6 +396,8 @@
     private List<ServiceEntity> _services = [];
     private List<MembershipPackageEntity> _packages = [];
     private string _filter = "all";
+    private string _sortBy = "date";
+    private bool _sortDesc = false;
     private bool _loading = true;
     private bool _showForm;
     private VoucherEntity _editing = new();
@@ -303,13 +409,36 @@
     private ClientEntity _quickClient = new();
     private bool _quickSaving;
 
-    private IEnumerable<VoucherEntity> Filtered => _filter switch
+    private VoucherEntity? _historyVoucher;
+    private List<VoucherUseEntity> _history = [];
+
+    private IEnumerable<VoucherEntity> Filtered
     {
-        "active" => _vouchers.Where(v => v.IsActive),
-        "used" => _vouchers.Where(v => v.IsUsed),
-        "expired" => _vouchers.Where(v => v.IsExpired && !v.IsUsed),
-        _ => _vouchers
-    };
+        get
+        {
+            var q = _filter switch
+            {
+                "active"  => _vouchers.Where(v => v.IsActive),
+                "used"    => _vouchers.Where(v => v.IsUsed),
+                "expired" => _vouchers.Where(v => v.IsExpired && !v.IsUsed),
+                _         => _vouchers.AsEnumerable()
+            };
+
+            q = (_sortBy, _sortDesc) switch
+            {
+                ("client",  false) => q.OrderBy(v => v.RecipientName),
+                ("client",  true)  => q.OrderByDescending(v => v.RecipientName),
+                ("code",    false) => q.OrderBy(v => v.Code),
+                ("code",    true)  => q.OrderByDescending(v => v.Code),
+                ("balance", false) => q.OrderBy(v => v.CurrentBalance),
+                ("balance", true)  => q.OrderByDescending(v => v.CurrentBalance),
+                (_,         false) => q.OrderBy(v => v.ExpiresAt),
+                _                  => q.OrderByDescending(v => v.ExpiresAt)
+            };
+
+            return q;
+        }
+    }
 
     protected override async Task OnInitializedAsync()
     {
@@ -333,6 +462,14 @@
     {
         _vouchers = await VoucherService.GetAllAsync();
         _expiringCount = await VoucherService.GetExpiringCountAsync(7);
+    }
+
+    private void ToggleSort() => _sortDesc = !_sortDesc;
+
+    private async Task OpenHistory(VoucherEntity v)
+    {
+        _historyVoucher = v;
+        _history = await VoucherService.GetUsageHistoryAsync(v.Id);
     }
 
     private void OpenCreate()

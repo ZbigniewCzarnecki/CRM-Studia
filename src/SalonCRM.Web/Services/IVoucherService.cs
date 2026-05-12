@@ -12,4 +12,5 @@ public interface IVoucherService
     Task<VoucherEntity> CreateAsync(VoucherEntity voucher, CancellationToken ct = default);
     Task UpdateAsync(VoucherEntity voucher, CancellationToken ct = default);
     Task DeleteAsync(int id, CancellationToken ct = default);
+    Task<List<VoucherUseEntity>> GetUsageHistoryAsync(int voucherId, CancellationToken ct = default);
 }

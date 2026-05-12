@@ -47,11 +47,23 @@ public class AppointmentService : IAppointmentService
             var v = await _db.Vouchers.FindAsync([appt.VoucherId.Value], ct);
             if (v != null && !v.IsUsed)
             {
+                var use = new VoucherUseEntity
+                {
+                    VoucherId = v.Id,
+                    AppointmentId = appt.Id,
+                    ClientName = appt.ClientName,
+                    ServiceName = appt.ServiceName,
+                    UsedAt = DateTime.Now
+                };
+
                 if (v.Type == VoucherType.Amount)
                 {
                     var deduction = appt.VoucherDeduction ?? 0;
-                    v.RemainingAmount = Math.Max(0, (v.RemainingAmount ?? v.AmountValue ?? 0) - deduction);
-                    if (v.RemainingAmount <= 0)
+                    var newBalance = Math.Max(0, (v.RemainingAmount ?? v.AmountValue ?? 0) - deduction);
+                    v.RemainingAmount = newBalance;
+                    use.AmountDeducted = deduction;
+                    use.BalanceAfter = newBalance;
+                    if (newBalance <= 0)
                     {
                         v.IsUsed = true;
                         v.UsedAt = DateTime.Now;
@@ -62,6 +74,8 @@ public class AppointmentService : IAppointmentService
                 {
                     v.AppointmentId = appt.Id;
                 }
+
+                _db.VoucherUses.Add(use);
                 await _db.SaveChangesAsync(ct);
             }
         }
@@ -136,6 +150,14 @@ public class AppointmentService : IAppointmentService
                         v.IsUsed = true;
                         v.UsedAt = DateTime.Now;
                         v.UsedInAppointment = $"{appt.ClientName} — {appt.ServiceName}";
+                        _db.VoucherUses.Add(new VoucherUseEntity
+                        {
+                            VoucherId = v.Id,
+                            AppointmentId = id,
+                            ClientName = appt.ClientName,
+                            ServiceName = appt.ServiceName,
+                            UsedAt = DateTime.Now
+                        });
                         await _db.SaveChangesAsync(ct);
                     }
                 }
