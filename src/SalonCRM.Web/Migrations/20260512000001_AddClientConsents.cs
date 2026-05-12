@@ -1,10 +1,14 @@
+using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Migrations;
+using SalonCRM.Web.Data;
 
 #nullable disable
 
 namespace SalonCRM.Web.Migrations
 {
     /// <inheritdoc />
+    [DbContext(typeof(ApplicationDbContext))]
+    [Migration("20260512000001_AddClientConsents")]
     public partial class AddClientConsents : Migration
     {
         /// <inheritdoc />
