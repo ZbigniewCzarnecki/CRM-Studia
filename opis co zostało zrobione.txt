@@ -157,6 +157,27 @@ Stos: Blazor Server .NET 8 + EF Core + SQLite + ASP.NET Core Identity
   - Ręcznie pisane migracje MUSZĄ mieć [DbContext] i [Migration] na klasie
   - Lepsza praktyka: użyć `dotnet ef migrations add NazwaMigracji` — narzędzie samo wygeneruje .Designer.cs z poprawnymi atrybutami
 
+[web-v6] Zmiana hasła, fix walidacji email, redesign pieczątek i sidebar
+  Components/Pages/Account/ChangePassword.razor (nowy):
+  - Strona /account/password (wymaga autoryzacji)
+  - Formularz: aktualne hasło / nowe hasło / potwierdzenie
+  - Walidacja: pola niepuste, hasła identyczne
+  - UserManager.ChangePasswordAsync — komunikaty błędów z Identity
+  - Spinner podczas zapisu
+  MainLayout.razor:
+  - Link "Zmień hasło" w stopce sidebar → /account/password
+  ClientEntity.cs:
+  - Zamieniono [EmailAddress] na [RegularExpression(@"^$|...")]
+  - Regex pozwala na puste pole LUB poprawny format email
+  ClientList.razor:
+  - Kolumna Email: ikony zgód (koperta/telefon) jako drobny inline tekst zamiast brzydkich badge'ów
+  - Kolumna Pieczątki: dots (●●●○○...) zamiast badge, okrągły przycisk + zamiast Bootstrap button
+  app.css + MainLayout.razor.css + NavMenu.razor.css:
+  - Sidebar: biały (#fff) zamiast ciemnego gradientu — styl premium beauty salon
+  - Prawe obramowanie sidebar z delikatnym różowym cieniem
+  - Linki nav: ciemny tekst z różowymi akcentami aktywnego stanu
+  - Nowe klasy: .btn-change-pass, .consent-indicators, .stamps-cell, .sdot, .sdot-on, .stamp-add-btn
+
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 █ PROBLEMY I ROZWIĄZANIA
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━

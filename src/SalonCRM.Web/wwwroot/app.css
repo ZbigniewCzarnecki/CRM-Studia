@@ -3,7 +3,7 @@
     --salon-pink-hover: #7e4357;
     --salon-pink-light: #f5eaed;
     --salon-dark:       #3a2c35;
-    --sidebar-bg:       #302540;
+    --sidebar-bg:       #ffffff;
     --bg-main:          #faf6f7;
     --bg-subtle:        #f5eef1;
     --border:           #e8d8de;
@@ -41,14 +41,14 @@ html, body {
     padding: 1.5rem 1rem;
     font-size: 1.2rem;
     font-weight: 700;
-    border-bottom: 1px solid rgba(255,255,255,0.08);
+    border-bottom: 1px solid #f0e0e5;
     display: flex;
     align-items: center;
     gap: 0.5rem;
 }
 
-.brand-name { color: var(--salon-pink-light); }
-.brand-icon { font-size: 1.3rem; color: #e8b4c4; }
+.brand-name { color: #1a1218; font-weight: 700; letter-spacing: 0.02em; }
+.brand-icon { font-size: 1.3rem; color: #a35870; }
 
 .nav-menu {
     display: flex;
@@ -58,7 +58,7 @@ html, body {
 }
 
 .nav-link {
-    color: rgba(255,255,255,0.65);
+    color: #8a7075;
     padding: 0.75rem 1.25rem;
     text-decoration: none;
     display: flex;
@@ -69,17 +69,17 @@ html, body {
     font-size: 0.92rem;
 }
 
-.nav-link:hover { background: rgba(255,255,255,0.07); color: rgba(255,255,255,0.9); }
-.nav-link.active { background: rgba(163,88,112,0.2); color: #e8b4c4; border-left-color: #e8b4c4; }
+.nav-link:hover { background: #faf6f7; color: #3a2c35; }
+.nav-link.active { background: #fdf0f3; color: #a35870; border-left-color: #a35870; }
 .nav-icon { font-size: 1rem; }
 
 .sidebar-footer {
     padding: 1rem;
-    border-top: 1px solid rgba(255,255,255,0.08);
+    border-top: 1px solid #f0e0e5;
 }
 
 .user-info {
-    color: rgba(255,255,255,0.5);
+    color: #b8a0a8;
     font-size: 0.8rem;
     margin-bottom: 0.5rem;
     overflow: hidden;
@@ -89,8 +89,8 @@ html, body {
 
 .btn-logout {
     background: none;
-    border: 1px solid rgba(255,255,255,0.2);
-    color: rgba(255,255,255,0.6);
+    border: 1px solid #e8d8de;
+    color: #9a8389;
     padding: 0.25rem 0.75rem;
     border-radius: 6px;
     cursor: pointer;
@@ -98,7 +98,7 @@ html, body {
     width: 100%;
     transition: all 0.2s;
 }
-.btn-logout:hover { border-color: #e8b4c4; color: #e8b4c4; }
+.btn-logout:hover { border-color: #a35870; color: #a35870; }
 
 .main-content {
     flex: 1;
@@ -699,3 +699,41 @@ html, body {
     font-weight: 700;
     text-align: center;
 }
+
+/* === Zmień hasło link === */
+.btn-change-pass {
+    display: block;
+    text-align: center;
+    color: #b8a0a8;
+    font-size: 0.8rem;
+    text-decoration: none;
+    padding: 0.2rem 0;
+    margin-bottom: 0.5rem;
+    transition: color 0.2s;
+}
+.btn-change-pass:hover { color: #a35870; }
+
+/* === Stamps dots w liście klientów === */
+.consent-indicators { color: #c8a4b0; font-size: 0.72rem; }
+.stamps-cell { display: flex; align-items: center; gap: 6px; }
+.stamp-dots { display: flex; align-items: center; gap: 3px; flex-wrap: nowrap; }
+.sdot { width: 7px; height: 7px; border-radius: 50%; background: #e8d8de; flex-shrink: 0; }
+.sdot-on { background: #a35870; }
+.stamp-count-label { font-size: 0.75rem; color: #9a8389; margin-left: 2px; }
+.stamp-add-btn {
+    width: 22px; height: 22px;
+    border-radius: 50%;
+    border: 1.5px solid #e8d8de;
+    color: #a35870;
+    background: none;
+    padding: 0;
+    cursor: pointer;
+    font-size: 0.85rem;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    transition: all 0.2s;
+    line-height: 1;
+    flex-shrink: 0;
+}
+.stamp-add-btn:hover { background: #a35870; color: white; border-color: #a35870; }

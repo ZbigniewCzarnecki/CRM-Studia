@@ -5,12 +5,13 @@
         <div class="crm-layout">
             <nav class="sidebar">
                 <div class="sidebar-brand">
-                    <span>💅</span>
+                    <i class="bi bi-gem brand-icon"></i>
                     <span class="brand-name">SalonCRM</span>
                 </div>
                 <NavMenu />
                 <div class="sidebar-footer">
                     <div class="user-info">@context.User.Identity?.Name</div>
+                    <a href="/account/password" class="btn-change-pass">Zmień hasło</a>
                     <form method="post" action="/logout">
                         <AntiforgeryToken />
                         <button type="submit" class="btn-logout">Wyloguj</button>
@@ -30,5 +31,5 @@
 <div id="blazor-error-ui">
     Wystąpił nieoczekiwany błąd.
     <a href="" class="reload">Odśwież</a>
-    <a class="dismiss">🗙</a>
+    <a class="dismiss"><i class="bi bi-x-lg"></i></a>
 </div>

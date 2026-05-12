@@ -70,31 +70,39 @@ else
                             </td>
                             <td>@c.PhoneNumber</td>
                             <td>
-                                @c.Email
-                                <div class="d-flex gap-1 mt-1">
-                                    @if (c.ConsentEmail)
+                                <div>@c.Email
+                                    @if (c.ConsentEmail || c.ConsentSms)
                                     {
-                                        <span class="badge bg-light text-secondary border" title="Zgoda na e-mail"><i class="bi bi-envelope-fill"></i></span>
-                                    }
-                                    @if (c.ConsentSms)
-                                    {
-                                        <span class="badge bg-light text-secondary border" title="Zgoda na SMS"><i class="bi bi-chat-dots-fill"></i></span>
+                                        <span class="ms-1 consent-indicators">
+                                            @if (c.ConsentEmail) { <i class="bi bi-envelope-fill" title="Zgoda e-mail"></i> }
+                                            @if (c.ConsentSms)   { <i class="bi bi-phone-fill" title="Zgoda SMS"></i> }
+                                        </span>
                                     }
                                 </div>
                             </td>
                             <td>
                                 @{
                                     var count = _stampCounts.TryGetValue(c.Id, out var sc) ? sc : 0;
+                                    var dots = Math.Min(_stampsForReward, 10);
                                 }
-                                <span class="badge @(count >= _stampsForReward ? "bg-warning text-dark" : "bg-light text-secondary border")"
-                                      title="@count / @_stampsForReward pieczątek">
-                                    <i class="bi bi-star-fill me-1" style="color:var(--salon-pink)"></i>@count / @_stampsForReward
-                                </span>
-                                @if (_canManageLoyalty)
-                                {
-                                    <button class="btn btn-sm btn-outline-secondary ms-1" title="Dodaj pieczątkę"
-                                            @onclick="() => OpenQuickStamp(c)">+</button>
-                                }
+                                <div class="stamps-cell">
+                                    <div class="stamp-dots" title="@count / @_stampsForReward pieczątek">
+                                        @for (int i = 0; i < dots; i++)
+                                        {
+                                            <span class="sdot @(i < count ? "sdot-on" : "")"></span>
+                                        }
+                                        @if (_stampsForReward > 10)
+                                        {
+                                            <span class="stamp-count-label">@count/@_stampsForReward</span>
+                                        }
+                                    </div>
+                                    @if (_canManageLoyalty)
+                                    {
+                                        <button class="stamp-add-btn" title="Dodaj pieczątkę" @onclick="() => OpenQuickStamp(c)">
+                                            <i class="bi bi-plus"></i>
+                                        </button>
+                                    }
+                                </div>
                             </td>
                             <td class="text-end">
                                 <a href="/clients/@c.Id" class="btn btn-sm btn-outline-info me-1">Profil</a>
