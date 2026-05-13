@@ -1,0 +1,574 @@
+@page "/produkty"
+@rendermode InteractiveServer
+@attribute [Microsoft.AspNetCore.Authorization.Authorize]
+@inject IProductService ProductService
+@inject IClientService ClientService
+@inject ISaleService SaleService
+@inject CurrentUserContext UserContext
+@inject IJSRuntime JS
+
+<PageTitle>Produkty — SalonCRM</PageTitle>
+
+<div class="page-header">
+    <h1>Produkty</h1>
+    <div class="d-flex gap-2 align-items-center flex-wrap">
+        <button class="btn btn-success" @onclick="() => _showSellModal = true">
+            <i class="bi bi-cart-plus-fill me-1"></i>Sprzedaj produkt klientowi
+        </button>
+        <AuthorizeView Roles="Admin">
+            <button class="btn btn-outline-secondary btn-sm" @onclick="ExportCsv" disabled="@_importing">↓ Eksport CSV</button>
+            <label class="btn btn-outline-secondary btn-sm mb-0" style="cursor:pointer">
+                ↑ Import CSV
+                <InputFile OnChange="ImportCsv" accept=".csv" style="display:none" />
+            </label>
+            <button class="btn btn-outline-warning btn-sm" @onclick="RemoveDuplicates" disabled="@_importing" title="Usuwa zduplikowane produkty (zachowuje pierwszy)">Usuń duplikaty</button>
+            <button class="btn btn-primary" @onclick="() => OpenForm(null)">+ Dodaj produkt</button>
+        </AuthorizeView>
+    </div>
+</div>
+
+@if (_importMsg != null)
+{
+    <div class="alert @(_importMsg.StartsWith("Błąd") ? "alert-danger" : "alert-success") alert-dismissible py-2 mb-3">
+        @_importMsg
+        <button type="button" class="btn-close" @onclick="() => _importMsg = null"></button>
+    </div>
+}
+
+@if (_sellSuccessMsg != null)
+{
+    <div class="alert alert-success alert-dismissible py-2 mb-3">
+        <i class="bi bi-check-circle-fill me-2"></i>@_sellSuccessMsg
+        <button type="button" class="btn-close" @onclick="() => _sellSuccessMsg = null"></button>
+    </div>
+}
+
+<div class="sort-bar mb-3">
+    <input class="form-control" style="max-width:320px" placeholder="Szukaj po nazwie lub kategorii..."
+           @bind="_query" @bind:event="oninput" />
+    <div class="form-check form-switch ms-3 mb-0 d-flex align-items-center">
+        <input class="form-check-input me-2" type="checkbox" @bind="_showInactive" />
+        <label class="form-check-label">Pokaż nieaktywne</label>
+    </div>
+</div>
+
+@if (_loading)
+{
+    <div class="text-center py-4"><span class="spinner-border text-primary"></span></div>
+}
+else if (!Filtered.Any())
+{
+    <div class="empty-state">Brak produktów. Dodaj pierwszy klikając „Dodaj produkt".</div>
+}
+else
+{
+    <div class="card">
+        <div class="card-body p-0">
+            <table class="table table-hover mb-0">
+                <thead>
+                    <tr>
+                        <th>Nazwa</th>
+                        <th>Kategoria</th>
+                        <th class="text-end">Cena brutto</th>
+                        <th class="text-end">VAT</th>
+                        <th class="text-end">Netto</th>
+                        <th>Status</th>
+                        <th></th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach (var p in Filtered)
+                    {
+                        var net = Math.Round(p.Price / (1 + p.TaxRatePercent / 100), 2);
+                        <tr class="@(!p.IsActive ? "text-muted" : "")">
+                            <td>
+                                <div>@p.Name</div>
+                                @if (!string.IsNullOrWhiteSpace(p.Description))
+                                {
+                                    <small class="text-muted">@p.Description</small>
+                                }
+                            </td>
+                            <td>@(string.IsNullOrWhiteSpace(p.Category) ? "—" : p.Category)</td>
+                            <td class="text-end"><strong>@p.Price.ToString("F2") PLN</strong></td>
+                            <td class="text-end text-muted">@p.TaxRatePercent%</td>
+                            <td class="text-end">@net.ToString("F2") PLN</td>
+                            <td>
+                                <span class="badge @(p.IsActive ? "bg-success" : "bg-secondary")">
+                                    @(p.IsActive ? "Aktywny" : "Nieaktywny")
+                                </span>
+                            </td>
+                            <td class="text-end">
+                                <AuthorizeView Roles="Admin">
+                                    <button class="btn btn-sm btn-outline-primary me-1" @onclick="() => OpenForm(p)">Edytuj</button>
+                                    <button class="btn btn-sm btn-outline-danger" @onclick="() => ConfirmDelete(p)">Usuń</button>
+                                </AuthorizeView>
+                            </td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        </div>
+    </div>
+}
+
+<!-- Modal: Sprzedaj produkt klientowi -->
+@if (_showSellModal)
+{
+    <div class="modal-backdrop">
+        <div class="modal-dialog-custom">
+            <div class="modal-header-custom">
+                <h5><i class="bi bi-cart-plus-fill me-2"></i>Sprzedaj produkt klientowi</h5>
+                <button class="btn-close" @onclick="CloseSellModal"></button>
+            </div>
+            <div class="modal-body-custom">
+                <div class="row g-3">
+                    <div class="col-12">
+                        <label class="form-label">Klient *</label>
+                        <div class="d-flex gap-2">
+                            <select class="form-select" value="@(_sellClientId?.ToString() ?? "")" @onchange="OnSellClientChanged">
+                                <option value="">-- wybierz klienta --</option>
+                                @foreach (var c in _clients)
+                                {
+                                    <option value="@c.Id">@c.FirstName @c.LastName @(!string.IsNullOrEmpty(c.PhoneNumber) ? $"({c.PhoneNumber})" : "")</option>
+                                }
+                            </select>
+                            <button type="button" class="btn btn-outline-secondary text-nowrap" @onclick="() => _showQuickClient = true" title="Dodaj nowego klienta">
+                                <i class="bi bi-person-plus-fill"></i>
+                            </button>
+                        </div>
+                    </div>
+                    <div class="col-12">
+                        <label class="form-label">Produkt *</label>
+                        <select class="form-select" value="@(_sellProductId?.ToString() ?? "")" @onchange="OnSellProductChanged">
+                            <option value="">-- wybierz produkt --</option>
+                            @foreach (var p in _all.Where(p => p.IsActive))
+                            {
+                                <option value="@p.Id">@p.Name @(!string.IsNullOrWhiteSpace(p.Category) ? "[" + p.Category + "]" : "") – @p.Price.ToString("F2") PLN</option>
+                            }
+                        </select>
+                    </div>
+                    <div class="col-md-4">
+                        <label class="form-label">Ilość</label>
+                        <input type="number" class="form-control" @bind="_sellQuantity" min="1" step="1" />
+                    </div>
+                    <div class="col-md-8">
+                        <label class="form-label">Metoda płatności</label>
+                        <select class="form-select" @bind="_sellPaymentMethod">
+                            <option value="@PaymentMethod.Cash">Gotówka</option>
+                            <option value="@PaymentMethod.Card">Karta</option>
+                            <option value="@PaymentMethod.Transfer">Przelew</option>
+                        </select>
+                    </div>
+                    <div class="col-12">
+                        <label class="form-label">Notatki</label>
+                        <textarea class="form-control" rows="2" @bind="_sellNotes"></textarea>
+                    </div>
+                    @if (_sellProductId.HasValue)
+                    {
+                        var prod = _all.FirstOrDefault(p => p.Id == _sellProductId);
+                        if (prod != null)
+                        {
+                            var gross = prod.Price * _sellQuantity;
+                            var net = Math.Round(gross / (1 + prod.TaxRatePercent / 100), 2);
+                            var tax = gross - net;
+                            <div class="col-12">
+                                <div class="alert alert-light py-2 px-3 mb-0 small">
+                                    Brutto: <strong>@gross.ToString("F2") PLN</strong> ·
+                                    Netto: <strong>@net.ToString("F2") PLN</strong> ·
+                                    VAT (@prod.TaxRatePercent%): <strong>@tax.ToString("F2") PLN</strong>
+                                </div>
+                            </div>
+                        }
+                    }
+                </div>
+            </div>
+            <div class="modal-footer-custom">
+                <button class="btn btn-success" @onclick="SellProduct"
+                        disabled="@(_selling || !_sellClientId.HasValue || !_sellProductId.HasValue || _sellQuantity < 1)">
+                    @if (_selling) { <span class="spinner-border spinner-border-sm me-1"></span> }
+                    Sprzedaj
+                </button>
+                <button class="btn btn-secondary ms-2" @onclick="CloseSellModal">Anuluj</button>
+            </div>
+        </div>
+    </div>
+}
+
+<!-- Modal: szybkie dodanie klienta -->
+@if (_showQuickClient)
+{
+    <div class="modal-backdrop" style="z-index:1060">
+        <div class="modal-dialog-custom" style="max-width:440px">
+            <div class="modal-header-custom">
+                <h5>Szybkie dodanie klienta</h5>
+                <button class="btn-close" @onclick="() => _showQuickClient = false"></button>
+            </div>
+            <EditForm Model="_quickClient" OnValidSubmit="SaveQuickClient" FormName="quick-client-product">
+                <DataAnnotationsValidator />
+                <div class="modal-body-custom">
+                    <div class="row g-3">
+                        <div class="col-6">
+                            <label class="form-label">Imię *</label>
+                            <InputText @bind-Value="_quickClient.FirstName" class="form-control" />
+                            <ValidationMessage For="() => _quickClient.FirstName" />
+                        </div>
+                        <div class="col-6">
+                            <label class="form-label">Nazwisko *</label>
+                            <InputText @bind-Value="_quickClient.LastName" class="form-control" />
+                            <ValidationMessage For="() => _quickClient.LastName" />
+                        </div>
+                        <div class="col-6">
+                            <label class="form-label">Telefon</label>
+                            <InputText @bind-Value="_quickClient.PhoneNumber" class="form-control" />
+                        </div>
+                        <div class="col-6">
+                            <label class="form-label">E-mail</label>
+                            <InputText @bind-Value="_quickClient.Email" class="form-control" />
+                            <ValidationMessage For="() => _quickClient.Email" />
+                        </div>
+                    </div>
+                </div>
+                <div class="modal-footer-custom">
+                    <button type="submit" class="btn btn-primary" disabled="@_quickSaving">
+                        @(_quickSaving ? "Zapisywanie..." : "Dodaj klienta")
+                    </button>
+                    <button type="button" class="btn btn-secondary ms-2" @onclick="() => _showQuickClient = false">Anuluj</button>
+                </div>
+            </EditForm>
+        </div>
+    </div>
+}
+
+@if (_showForm && _editing != null)
+{
+    <div class="modal-backdrop">
+        <div class="modal-dialog-custom">
+            <div class="modal-header-custom">
+                <h5>@(_editing.Id == 0 ? "Nowy produkt" : "Edytuj produkt")</h5>
+                <button class="btn-close" @onclick="CloseForm"></button>
+            </div>
+            <EditForm Model="_editing" OnValidSubmit="Save" FormName="product-form">
+                <DataAnnotationsValidator />
+                <div class="modal-body-custom">
+                    <div class="row g-3">
+                        <div class="col-md-8">
+                            <label class="form-label">Nazwa *</label>
+                            <InputText @bind-Value="_editing.Name" class="form-control" />
+                            <ValidationMessage For="() => _editing.Name" />
+                        </div>
+                        <div class="col-md-4">
+                            <label class="form-label">Kategoria</label>
+                            <InputText @bind-Value="_editing.Category" class="form-control" placeholder="np. Kosmetyki" />
+                        </div>
+                        <div class="col-12">
+                            <label class="form-label">Opis</label>
+                            <InputTextArea @bind-Value="_editing.Description" class="form-control" rows="2" />
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label">Cena brutto (PLN) *</label>
+                            <InputNumber @bind-Value="_editing.Price" class="form-control" />
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label">Stawka VAT (%)</label>
+                            <InputNumber @bind-Value="_editing.TaxRatePercent" class="form-control" />
+                            <div class="form-text">np. 23, 8, 5 lub 0</div>
+                        </div>
+                        @if (_editing.Price > 0)
+                        {
+                            var net = Math.Round(_editing.Price / (1 + _editing.TaxRatePercent / 100), 2);
+                            var tax = _editing.Price - net;
+                            <div class="col-12">
+                                <div class="alert alert-light py-2 px-3 mb-0 small">
+                                    Netto: <strong>@net.ToString("F2") PLN</strong> ·
+                                    VAT (@_editing.TaxRatePercent%): <strong>@tax.ToString("F2") PLN</strong>
+                                </div>
+                            </div>
+                        }
+                        <div class="col-12">
+                            <div class="form-check">
+                                <InputCheckbox @bind-Value="_editing.IsActive" class="form-check-input" id="isActiveProduct" />
+                                <label class="form-check-label" for="isActiveProduct">Aktywny (dostępny do sprzedaży)</label>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <div class="modal-footer-custom">
+                    <button type="submit" class="btn btn-primary" disabled="@_saving">
+                        @if (_saving) { <span class="spinner-border spinner-border-sm me-1"></span> }
+                        Zapisz
+                    </button>
+                    <button type="button" class="btn btn-secondary ms-2" @onclick="CloseForm">Anuluj</button>
+                </div>
+            </EditForm>
+        </div>
+    </div>
+}
+
+@if (_deleteTarget != null)
+{
+    <div class="modal-backdrop">
+        <div class="modal-dialog-custom" style="max-width:400px">
+            <div class="modal-header-custom">
+                <h5>Usuń produkt</h5>
+                <button class="btn-close" @onclick="() => _deleteTarget = null"></button>
+            </div>
+            <div class="modal-body-custom">
+                Czy na pewno chcesz usunąć produkt <strong>@_deleteTarget.Name</strong>?
+            </div>
+            <div class="modal-footer-custom">
+                <button class="btn btn-danger" @onclick="DeleteConfirmed">Usuń</button>
+                <button class="btn btn-secondary ms-2" @onclick="() => _deleteTarget = null">Anuluj</button>
+            </div>
+        </div>
+    </div>
+}
+
+@using SalonCRM.Web.Data.Entities
+@code {
+    private List<ProductEntity> _all = [];
+    private List<ClientEntity> _clients = [];
+    private bool _loading = true, _showForm, _saving, _importing;
+    private bool _showInactive;
+    private string _query = string.Empty;
+    private ProductEntity? _editing, _deleteTarget;
+    private string? _importMsg;
+    private string? _sellSuccessMsg;
+
+    private bool _showSellModal;
+    private int? _sellClientId;
+    private string _sellClientName = "";
+    private int? _sellProductId;
+    private int _sellQuantity = 1;
+    private PaymentMethod _sellPaymentMethod = PaymentMethod.Cash;
+    private string _sellNotes = "";
+    private bool _selling;
+
+    private bool _showQuickClient;
+    private ClientEntity _quickClient = new();
+    private bool _quickSaving;
+
+    private IEnumerable<ProductEntity> Filtered
+    {
+        get
+        {
+            var q = _query.Trim().ToLower();
+            var list = _showInactive ? _all : _all.Where(p => p.IsActive);
+            return string.IsNullOrWhiteSpace(q)
+                ? list
+                : list.Where(p => p.Name.ToLower().Contains(q) || p.Category.ToLower().Contains(q));
+        }
+    }
+
+    protected override async Task OnInitializedAsync()
+    {
+        var prodTask = ProductService.GetAllAsync();
+        var cliTask = ClientService.GetAllAsync();
+        await Task.WhenAll(prodTask, cliTask);
+        _all = prodTask.Result;
+        _clients = cliTask.Result;
+        _loading = false;
+    }
+
+    private void OnSellClientChanged(ChangeEventArgs e)
+    {
+        if (int.TryParse(e.Value?.ToString(), out var id) && id > 0)
+        {
+            _sellClientId = id;
+            var c = _clients.FirstOrDefault(x => x.Id == id);
+            _sellClientName = c != null ? $"{c.FirstName} {c.LastName}" : "";
+        }
+        else
+        {
+            _sellClientId = null;
+            _sellClientName = "";
+        }
+    }
+
+    private void OnSellProductChanged(ChangeEventArgs e)
+    {
+        if (int.TryParse(e.Value?.ToString(), out var id) && id > 0)
+            _sellProductId = id;
+        else
+            _sellProductId = null;
+    }
+
+    private void CloseSellModal()
+    {
+        _showSellModal = false;
+        _sellClientId = null;
+        _sellClientName = "";
+        _sellProductId = null;
+        _sellQuantity = 1;
+        _sellPaymentMethod = PaymentMethod.Cash;
+        _sellNotes = "";
+    }
+
+    private async Task SellProduct()
+    {
+        if (!_sellClientId.HasValue || !_sellProductId.HasValue || _sellQuantity < 1) return;
+        _selling = true;
+        try
+        {
+            var prod = _all.FirstOrDefault(p => p.Id == _sellProductId);
+            if (prod == null) return;
+
+            var (userId, _) = await UserContext.ResolveAsync();
+            await SaleService.CreateAsync(new SaleEntity
+            {
+                SaleDate = DateTime.Now,
+                ClientId = _sellClientId,
+                ClientName = _sellClientName,
+                PaymentMethod = _sellPaymentMethod,
+                Notes = _sellNotes,
+                CreatedByUserId = userId,
+                Items =
+                [
+                    new SaleItemEntity
+                    {
+                        ItemType = SaleItemType.Product,
+                        ProductId = prod.Id,
+                        ItemName = prod.Name,
+                        Quantity = _sellQuantity,
+                        UnitPrice = prod.Price,
+                        TaxRatePercent = prod.TaxRatePercent
+                    }
+                ]
+            });
+
+            var gross = prod.Price * _sellQuantity;
+            _sellSuccessMsg = $"Sprzedano {_sellQuantity}x '{prod.Name}' dla {_sellClientName} - {gross.ToString("F2")} PLN brutto.";
+            CloseSellModal();
+        }
+        finally
+        {
+            _selling = false;
+        }
+    }
+
+    private async Task SaveQuickClient()
+    {
+        _quickSaving = true;
+        try
+        {
+            var created = await ClientService.CreateAsync(_quickClient);
+            _clients = await ClientService.GetAllAsync();
+            _sellClientId = created.Id;
+            _sellClientName = $"{created.FirstName} {created.LastName}";
+            _quickClient = new();
+            _showQuickClient = false;
+        }
+        finally
+        {
+            _quickSaving = false;
+        }
+    }
+
+    private void OpenForm(ProductEntity? p)
+    {
+        _editing = p == null ? new ProductEntity() : new ProductEntity
+        {
+            Id = p.Id, Name = p.Name, Description = p.Description,
+            Category = p.Category, Price = p.Price,
+            TaxRatePercent = p.TaxRatePercent, IsActive = p.IsActive
+        };
+        _showForm = true;
+    }
+
+    private void CloseForm() => _showForm = false;
+
+    private async Task Save()
+    {
+        if (_editing == null) return;
+        _saving = true;
+        if (_editing.Id == 0) await ProductService.CreateAsync(_editing);
+        else await ProductService.UpdateAsync(_editing);
+        _saving = false;
+        _showForm = false;
+        _all = await ProductService.GetAllAsync();
+    }
+
+    private void ConfirmDelete(ProductEntity p) => _deleteTarget = p;
+
+    private async Task DeleteConfirmed()
+    {
+        if (_deleteTarget != null)
+        {
+            await ProductService.DeleteAsync(_deleteTarget.Id);
+            _deleteTarget = null;
+            _all = await ProductService.GetAllAsync();
+        }
+    }
+
+    private async Task ExportCsv()
+    {
+        var sb = new System.Text.StringBuilder();
+        sb.AppendLine("Nazwa;Kategoria;Opis;Cena;VATprocent;Aktywny");
+        foreach (var p in _all)
+            sb.AppendLine(string.Join(";",
+                CsvHelper.Q(p.Name),
+                CsvHelper.Q(p.Category),
+                CsvHelper.Q(p.Description),
+                p.Price.ToString(System.Globalization.CultureInfo.InvariantCulture),
+                p.TaxRatePercent.ToString(System.Globalization.CultureInfo.InvariantCulture),
+                p.IsActive ? "TAK" : "NIE"));
+        var b64 = Convert.ToBase64String(CsvHelper.ToBytes(sb.ToString()));
+        await JS.InvokeVoidAsync("downloadCsv", $"produkty_{DateTime.Now:yyyyMMdd}.csv", b64);
+    }
+
+    private async Task RemoveDuplicates()
+    {
+        var dupes = _all
+            .GroupBy(p => p.Name.ToLower())
+            .Where(g => g.Count() > 1)
+            .SelectMany(g => g.OrderBy(p => p.Id).Skip(1))
+            .ToList();
+        foreach (var d in dupes)
+            await ProductService.DeleteAsync(d.Id);
+        _all = await ProductService.GetAllAsync();
+        _importMsg = dupes.Count > 0 ? $"Usunięto {dupes.Count} duplikatów produktów." : "Brak duplikatów do usunięcia.";
+    }
+
+    private async Task ImportCsv(InputFileChangeEventArgs e)
+    {
+        _importing = true;
+        _importMsg = null;
+        int imported = 0, skipped = 0;
+        try
+        {
+            var content = await CsvHelper.ReadFileAsync(e.File);
+            var existingNames = _all.Select(x => x.Name.ToLower()).ToHashSet();
+            bool header = true;
+            foreach (var rawLine in content.Split('\n', StringSplitOptions.RemoveEmptyEntries))
+            {
+                if (header) { header = false; continue; }
+                var p = CsvHelper.SplitLine(rawLine.Trim('\r'));
+                if (p.Length < 4 || string.IsNullOrWhiteSpace(CsvHelper.Uq(p[0]))) { skipped++; continue; }
+
+                var name = CsvHelper.Uq(p[0]);
+                if (existingNames.Contains(name.ToLower())) { skipped++; continue; }
+
+                if (!decimal.TryParse(p[3], System.Globalization.NumberStyles.Any,
+                    System.Globalization.CultureInfo.InvariantCulture, out var price)) { skipped++; continue; }
+                decimal tax = 23;
+                if (p.Length > 4) decimal.TryParse(p[4], System.Globalization.NumberStyles.Any,
+                    System.Globalization.CultureInfo.InvariantCulture, out tax);
+
+                await ProductService.CreateAsync(new ProductEntity
+                {
+                    Name = name,
+                    Category = CsvHelper.Uq(p[1]),
+                    Description = p.Length > 2 ? CsvHelper.Uq(p[2]) : string.Empty,
+                    Price = price,
+                    TaxRatePercent = tax,
+                    IsActive = p.Length <= 5 || !CsvHelper.Uq(p[5]).Equals("NIE", StringComparison.OrdinalIgnoreCase)
+                });
+                existingNames.Add(name.ToLower());
+                imported++;
+            }
+            _importMsg = $"Zaimportowano {imported} produktów" + (skipped > 0 ? $", pominięto {skipped} (duplikaty lub błędne wiersze)" : "") + ".";
+            _all = await ProductService.GetAllAsync();
+        }
+        catch (Exception ex) { _importMsg = $"Błąd importu: {ex.Message}"; }
+        _importing = false;
+    }
+}

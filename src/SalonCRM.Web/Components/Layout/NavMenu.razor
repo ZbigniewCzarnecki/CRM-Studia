@@ -1,4 +1,5 @@
 <nav class="nav-menu">
+
     <NavLink class="nav-link" href="" Match="NavLinkMatch.All">
         <i class="nav-icon bi bi-speedometer2"></i> Dashboard
     </NavLink>
@@ -14,22 +15,32 @@
     <NavLink class="nav-link" href="appointments">
         <i class="nav-icon bi bi-calendar-check"></i> Wizyty
     </NavLink>
-    <NavLink class="nav-link" href="vouchery">
+
+    <div class="nav-group-label">Sprzedaż</div>
+
+    <NavLink class="nav-link nav-sub" href="vouchery">
         <i class="nav-icon bi bi-ticket-perforated-fill"></i> Vouchery
     </NavLink>
+    <NavLink class="nav-link nav-sub" href="produkty">
+        <i class="nav-icon bi bi-box-seam-fill"></i> Produkty
+    </NavLink>
     <AuthorizeView Roles="Admin">
-        <NavLink class="nav-link" href="karnety">
+        <NavLink class="nav-link nav-sub" href="karnety">
             <i class="nav-icon bi bi-card-checklist"></i> Karnety
         </NavLink>
     </AuthorizeView>
+
     <AuthorizeView Roles="Admin">
-        <NavLink class="nav-link" href="users">
+        <div class="nav-group-label">Administracja</div>
+        <NavLink class="nav-link nav-sub" href="users">
             <i class="nav-icon bi bi-people-fill"></i> Użytkownicy
         </NavLink>
-    </AuthorizeView>
-    <AuthorizeView Roles="Admin">
-        <NavLink class="nav-link" href="settings">
+        <NavLink class="nav-link nav-sub" href="settings">
             <i class="nav-icon bi bi-gear-fill"></i> Ustawienia
         </NavLink>
+        <NavLink class="nav-link nav-sub" href="audit-log">
+            <i class="nav-icon bi bi-journal-text"></i> Dziennik zdarzeń
+        </NavLink>
     </AuthorizeView>
+
 </nav>

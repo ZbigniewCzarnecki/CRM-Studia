@@ -5,15 +5,36 @@
 @inject IClientService ClientService
 @inject IServiceCrmService ServiceCrmService
 @inject IMembershipService MembershipService
+@inject ISaleService SaleService
+@inject CurrentUserContext UserContext
+@inject IJSRuntime JS
 
 <PageTitle>Vouchery — SalonCRM</PageTitle>
 
 <div class="page-header">
     <h1>Vouchery</h1>
-    <button class="btn btn-primary" @onclick="OpenCreate">
-        <i class="bi bi-plus-lg me-1"></i>Nowy voucher
-    </button>
+    <div class="d-flex gap-2 align-items-center flex-wrap">
+        <AuthorizeView Roles="Admin">
+            <button class="btn btn-outline-secondary btn-sm" @onclick="ExportCsv" disabled="@_importing">↓ Eksport CSV</button>
+            <label class="btn btn-outline-secondary btn-sm mb-0" style="cursor:pointer">
+                ↑ Import CSV
+                <InputFile OnChange="ImportCsv" accept=".csv" style="display:none" />
+            </label>
+            <button class="btn btn-outline-warning btn-sm" @onclick="RemoveDuplicates" disabled="@_importing" title="Usuwa zduplikowane kody voucherów (zachowuje pierwszy)">Usuń duplikaty</button>
+        </AuthorizeView>
+        <button class="btn btn-primary" @onclick="OpenCreate">
+            <i class="bi bi-plus-lg me-1"></i>Nowy voucher
+        </button>
+    </div>
 </div>
+
+@if (_importMsg != null)
+{
+    <div class="alert @(_importMsg.StartsWith("Błąd") ? "alert-danger" : "alert-success") alert-dismissible py-2 mb-3">
+        @_importMsg
+        <button type="button" class="btn-close" @onclick="() => _importMsg = null"></button>
+    </div>
+}
 
 @if (_expiringCount > 0)
 {
@@ -311,6 +332,47 @@
                                 </div>
                             </div>
                         }
+
+                        @if (_editing.Id == 0 && _editing.ClientId.HasValue)
+                        {
+                            <div class="col-12">
+                                <hr class="my-1" />
+                                <div class="fw-semibold small text-muted mb-2"><i class="bi bi-receipt me-1"></i>Rejestracja sprzedaży</div>
+                            </div>
+                            <div class="col-md-5">
+                                <label class="form-label">Cena sprzedaży (PLN)</label>
+                                <input type="number" class="form-control" @bind="_salePrice" step="0.01" min="0"
+                                       placeholder="@(_editing.Type == VoucherType.Amount ? (_editing.AmountValue?.ToString("F2") ?? "0") : "0")" />
+                                @if (_editing.Type == VoucherType.Amount && _editing.AmountValue.HasValue)
+                                {
+                                    <div class="form-text">Domyślnie = wartość vouchera</div>
+                                }
+                            </div>
+                            <div class="col-md-3">
+                                <label class="form-label">VAT (%)</label>
+                                <input type="number" class="form-control" @bind="_saleVat" step="1" min="0" max="100" />
+                            </div>
+                            <div class="col-md-4">
+                                <label class="form-label">Płatność</label>
+                                <select class="form-select" @bind="_salePaymentMethod">
+                                    <option value="@PaymentMethod.Cash">Gotówka</option>
+                                    <option value="@PaymentMethod.Card">Karta</option>
+                                    <option value="@PaymentMethod.Transfer">Przelew</option>
+                                </select>
+                            </div>
+                            @if (_salePrice > 0)
+                            {
+                                var net = Math.Round(_salePrice / (1 + _saleVat / 100), 2);
+                                var tax = _salePrice - net;
+                                <div class="col-12">
+                                    <div class="alert alert-light py-2 px-3 mb-0 small">
+                                        Netto: <strong>@net.ToString("F2") PLN</strong> ·
+                                        VAT (@_saleVat%): <strong>@tax.ToString("F2") PLN</strong> ·
+                                        Brutto: <strong>@_salePrice.ToString("F2") PLN</strong>
+                                    </div>
+                                </div>
+                            }
+                        }
                     </div>
                 </div>
                 <div class="modal-footer-custom">
@@ -411,6 +473,12 @@
 
     private VoucherEntity? _historyVoucher;
     private List<VoucherUseEntity> _history = [];
+    private bool _importing;
+    private string? _importMsg;
+
+    private decimal _salePrice;
+    private decimal _saleVat = 23m;
+    private PaymentMethod _salePaymentMethod = PaymentMethod.Cash;
 
     private IEnumerable<VoucherEntity> Filtered
     {
@@ -475,6 +543,9 @@
     private void OpenCreate()
     {
         _editing = new VoucherEntity { ExpiresAt = DateTime.Now.AddMonths(6) };
+        _salePrice = 0;
+        _saleVat = 23m;
+        _salePaymentMethod = PaymentMethod.Cash;
         GenerateCode();
         _showForm = true;
     }
@@ -523,6 +594,8 @@
             var client = _clients.FirstOrDefault(c => c.Id == id);
             if (client != null)
                 _editing.RecipientName = $"{client.FirstName} {client.LastName}";
+            if (_salePrice == 0 && _editing.AmountValue.HasValue)
+                _salePrice = _editing.AmountValue.Value;
         }
         else
         {
@@ -557,10 +630,39 @@
             if (_editing.Type == VoucherType.Amount && _editing.RemainingAmount == null)
                 _editing.RemainingAmount = _editing.AmountValue;
 
-            if (_editing.Id == 0)
+            var isNew = _editing.Id == 0;
+            if (isNew)
                 await VoucherService.CreateAsync(_editing);
             else
                 await VoucherService.UpdateAsync(_editing);
+
+            if (isNew && _editing.ClientId.HasValue)
+            {
+                var price = _salePrice > 0 ? _salePrice : (_editing.AmountValue ?? 0);
+                if (price > 0)
+                {
+                    var (userId, _) = await UserContext.ResolveAsync();
+                    await SaleService.CreateAsync(new SaleEntity
+                    {
+                        SaleDate = DateTime.Now,
+                        ClientId = _editing.ClientId,
+                        ClientName = _editing.RecipientName ?? string.Empty,
+                        PaymentMethod = _salePaymentMethod,
+                        CreatedByUserId = userId,
+                        Items =
+                        [
+                            new SaleItemEntity
+                            {
+                                ItemType = SaleItemType.Voucher,
+                                ItemName = $"Voucher {_editing.Code}",
+                                Quantity = 1,
+                                UnitPrice = price,
+                                TaxRatePercent = _saleVat
+                            }
+                        ]
+                    });
+                }
+            }
 
             CloseForm();
             await LoadVouchers();
@@ -579,5 +681,85 @@
         await VoucherService.DeleteAsync(_deleteTarget.Id);
         _deleteTarget = null;
         await LoadVouchers();
+    }
+
+    private async Task ExportCsv()
+    {
+        var sb = new System.Text.StringBuilder();
+        sb.AppendLine("Kod;Typ;Odbiorca;WartoscNominalna;Saldo;Usluga;WaznyDo;Uzyte;Notatki");
+        foreach (var v in _vouchers)
+        {
+            sb.AppendLine(string.Join(";",
+                CsvHelper.Q(v.Code),
+                CsvHelper.Q(v.Type == VoucherType.Amount ? "Kwotowy" : "NaUsluge"),
+                CsvHelper.Q(v.RecipientName),
+                v.AmountValue?.ToString(System.Globalization.CultureInfo.InvariantCulture) ?? "",
+                v.RemainingAmount?.ToString(System.Globalization.CultureInfo.InvariantCulture) ?? "",
+                CsvHelper.Q(v.ServiceName),
+                v.ExpiresAt.ToString("dd.MM.yyyy"),
+                v.IsUsed ? "TAK" : "NIE",
+                CsvHelper.Q(v.Notes)));
+        }
+        var b64 = Convert.ToBase64String(CsvHelper.ToBytes(sb.ToString()));
+        await JS.InvokeVoidAsync("downloadCsv", $"vouchery_{DateTime.Now:yyyyMMdd}.csv", b64);
+    }
+
+    private async Task RemoveDuplicates()
+    {
+        var dupes = _vouchers
+            .GroupBy(v => v.Code.ToLower())
+            .Where(g => g.Count() > 1)
+            .SelectMany(g => g.OrderBy(v => v.CreatedAt).Skip(1))
+            .ToList();
+        foreach (var d in dupes)
+            await VoucherService.DeleteAsync(d.Id);
+        _importMsg = dupes.Count > 0 ? $"Usunięto {dupes.Count} duplikatów voucherów." : "Brak duplikatów do usunięcia.";
+        await LoadVouchers();
+    }
+
+    private async Task ImportCsv(InputFileChangeEventArgs e)
+    {
+        _importing = true;
+        _importMsg = null;
+        int imported = 0, skipped = 0;
+        try
+        {
+            var content = await CsvHelper.ReadFileAsync(e.File);
+            var existingCodes = _vouchers.Select(v => v.Code.ToLower()).ToHashSet();
+            bool header = true;
+            foreach (var rawLine in content.Split('\n', StringSplitOptions.RemoveEmptyEntries))
+            {
+                if (header) { header = false; continue; }
+                var p = CsvHelper.SplitLine(rawLine.Trim('\r'));
+                if (p.Length < 7 || string.IsNullOrWhiteSpace(CsvHelper.Uq(p[0]))) { skipped++; continue; }
+
+                var code = CsvHelper.Uq(p[0]);
+                if (existingCodes.Contains(code.ToLower())) { skipped++; continue; }
+
+                var typ = CsvHelper.Uq(p[1]).ToLower().Contains("kwot") ? VoucherType.Amount : VoucherType.Service;
+                decimal? amount = null, saldo = null;
+                if (decimal.TryParse(p[3], System.Globalization.NumberStyles.Any, System.Globalization.CultureInfo.InvariantCulture, out var av)) amount = av;
+                if (decimal.TryParse(p[4], System.Globalization.NumberStyles.Any, System.Globalization.CultureInfo.InvariantCulture, out var sv)) saldo = sv;
+                if (!DateTime.TryParseExact(p[6].Trim(), "dd.MM.yyyy", null, System.Globalization.DateTimeStyles.None, out var exp)) exp = DateTime.Now.AddMonths(6);
+
+                await VoucherService.CreateAsync(new VoucherEntity
+                {
+                    Code = code,
+                    Type = typ,
+                    RecipientName = CsvHelper.Uq(p[2]),
+                    AmountValue = amount,
+                    RemainingAmount = saldo ?? amount,
+                    ServiceName = p.Length > 5 ? CsvHelper.Uq(p[5]) : string.Empty,
+                    ExpiresAt = exp,
+                    Notes = p.Length > 8 ? CsvHelper.Uq(p[8]) : string.Empty
+                });
+                existingCodes.Add(code.ToLower());
+                imported++;
+            }
+            _importMsg = $"Zaimportowano {imported} voucherów" + (skipped > 0 ? $", pominięto {skipped} (duplikaty lub błędne wiersze)" : "") + ".";
+            await LoadVouchers();
+        }
+        catch (Exception ex) { _importMsg = $"Błąd importu: {ex.Message}"; }
+        _importing = false;
     }
 }

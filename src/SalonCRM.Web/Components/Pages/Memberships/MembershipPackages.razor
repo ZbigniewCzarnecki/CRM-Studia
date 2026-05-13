@@ -2,14 +2,46 @@
 @rendermode InteractiveServer
 @attribute [Microsoft.AspNetCore.Authorization.Authorize(Roles = "Admin")]
 @inject IMembershipService MembershipService
+@inject IServiceCrmService ServiceCrmService
+@inject IClientService ClientService
+@inject ISaleService SaleService
+@inject CurrentUserContext UserContext
+@inject IJSRuntime JS
 @using SalonCRM.Web.Data.Entities
 
 <PageTitle>Karnety — SalonCRM</PageTitle>
 
 <div class="page-header">
     <h1>Karnety</h1>
-    <button class="btn btn-primary" @onclick="OpenAdd">+ Nowy pakiet</button>
+    <div class="d-flex gap-2 align-items-center flex-wrap">
+        <button class="btn btn-success" @onclick="() => _showSellModal = true">
+            <i class="bi bi-person-check-fill me-1"></i>Sprzedaj karnet klientowi
+        </button>
+        <button class="btn btn-outline-secondary btn-sm" @onclick="ExportCsv" disabled="@_importing">↓ Eksport CSV</button>
+        <label class="btn btn-outline-secondary btn-sm mb-0" style="cursor:pointer">
+            ↑ Import CSV
+            <InputFile OnChange="ImportCsv" accept=".csv" style="display:none" />
+        </label>
+        <button class="btn btn-outline-warning btn-sm" @onclick="RemoveDuplicates" disabled="@_importing" title="Usuwa zduplikowane pakiety (zachowuje pierwszy)">Usuń duplikaty</button>
+        <button class="btn btn-primary" @onclick="OpenAdd">+ Nowy pakiet</button>
+    </div>
 </div>
+
+@if (_importMsg != null)
+{
+    <div class="alert @(_importMsg.StartsWith("Błąd") ? "alert-danger" : "alert-success") alert-dismissible py-2 mb-3">
+        @_importMsg
+        <button type="button" class="btn-close" @onclick="() => _importMsg = null"></button>
+    </div>
+}
+
+@if (_sellSuccessMsg != null)
+{
+    <div class="alert alert-success alert-dismissible py-2 mb-3">
+        <i class="bi bi-check-circle-fill me-2"></i>@_sellSuccessMsg
+        <button type="button" class="btn-close" @onclick="() => _sellSuccessMsg = null"></button>
+    </div>
+}
 
 @if (_loading)
 {
@@ -27,6 +59,7 @@ else
                 <tr>
                     <th>Nazwa</th>
                     <th>Usługa</th>
+                    <th>Cena</th>
                     <th>Wejścia</th>
                     <th>Ważność</th>
                     <th>Status</th>
@@ -39,6 +72,7 @@ else
                     <tr>
                         <td><strong>@pkg.Name</strong></td>
                         <td>@(string.IsNullOrWhiteSpace(pkg.ServiceName) ? "—" : pkg.ServiceName)</td>
+                        <td>@(pkg.Price > 0 ? pkg.Price.ToString("F2") + " PLN" : "—")</td>
                         <td>@pkg.TotalEntries wejść</td>
                         <td>@pkg.ValidityMonths mies.</td>
                         <td>
@@ -57,6 +91,134 @@ else
     </div>
 }
 
+<!-- Modal: Sprzedaj karnet klientowi -->
+@if (_showSellModal)
+{
+    <div class="modal-backdrop">
+        <div class="modal-dialog-custom">
+            <div class="modal-header-custom">
+                <h5><i class="bi bi-person-check-fill me-2"></i>Sprzedaj karnet klientowi</h5>
+                <button class="btn-close" @onclick="CloseSellModal"></button>
+            </div>
+            <div class="modal-body-custom">
+                <div class="row g-3">
+                    <div class="col-12">
+                        <label class="form-label">Klient *</label>
+                        <div class="d-flex gap-2">
+                            <select class="form-select" value="@(_sellClientId?.ToString() ?? "")" @onchange="OnSellClientChanged">
+                                <option value="">-- wybierz klienta --</option>
+                                @foreach (var c in _clients)
+                                {
+                                    <option value="@c.Id">@c.FirstName @c.LastName @(!string.IsNullOrEmpty(c.PhoneNumber) ? $"({c.PhoneNumber})" : "")</option>
+                                }
+                            </select>
+                            <button type="button" class="btn btn-outline-secondary text-nowrap" @onclick="() => _showQuickClient = true" title="Dodaj nowego klienta">
+                                <i class="bi bi-person-plus-fill"></i>
+                            </button>
+                        </div>
+                    </div>
+                    <div class="col-12">
+                        <label class="form-label">Pakiet karnetu *</label>
+                        <select class="form-select" value="@(_sellPackageId?.ToString() ?? "")" @onchange="OnSellPackageChanged">
+                            <option value="">-- wybierz pakiet --</option>
+                            @foreach (var p in _packages.Where(p => p.IsActive))
+                            {
+                                <option value="@p.Id">@p.Name (@p.TotalEntries wejść, @p.ValidityMonths mies.)@(p.Price > 0 ? " – " + p.Price.ToString("F2") + " PLN" : "")</option>
+                            }
+                        </select>
+                    </div>
+                    <div class="col-md-4">
+                        <label class="form-label">VAT (%)</label>
+                        <input type="number" class="form-control" @bind="_sellVat" step="1" min="0" max="100" />
+                    </div>
+                    <div class="col-md-8">
+                        <label class="form-label">Metoda płatności</label>
+                        <select class="form-select" @bind="_sellPaymentMethod">
+                            <option value="@PaymentMethod.Cash">Gotówka</option>
+                            <option value="@PaymentMethod.Card">Karta</option>
+                            <option value="@PaymentMethod.Transfer">Przelew</option>
+                        </select>
+                    </div>
+                    <div class="col-12">
+                        <label class="form-label">Notatki</label>
+                        <textarea class="form-control" rows="2" @bind="_sellNotes"></textarea>
+                    </div>
+                    @if (_sellPackageId.HasValue)
+                    {
+                        var pkg = _packages.FirstOrDefault(p => p.Id == _sellPackageId);
+                        if (pkg != null && pkg.Price > 0)
+                        {
+                            var net = Math.Round(pkg.Price / (1 + _sellVat / 100), 2);
+                            var tax = pkg.Price - net;
+                            <div class="col-12">
+                                <div class="alert alert-light py-2 px-3 mb-0 small">
+                                    Brutto: <strong>@pkg.Price.ToString("F2") PLN</strong> ·
+                                    Netto: <strong>@net.ToString("F2") PLN</strong> ·
+                                    VAT (@_sellVat%): <strong>@tax.ToString("F2") PLN</strong>
+                                </div>
+                            </div>
+                        }
+                    }
+                </div>
+            </div>
+            <div class="modal-footer-custom">
+                <button class="btn btn-success" @onclick="SellMembership"
+                        disabled="@(_selling || !_sellClientId.HasValue || !_sellPackageId.HasValue)">
+                    @if (_selling) { <span class="spinner-border spinner-border-sm me-1"></span> }
+                    Sprzedaj i przypisz
+                </button>
+                <button class="btn btn-secondary ms-2" @onclick="CloseSellModal">Anuluj</button>
+            </div>
+        </div>
+    </div>
+}
+
+<!-- Modal: szybkie dodanie klienta -->
+@if (_showQuickClient)
+{
+    <div class="modal-backdrop" style="z-index:1060">
+        <div class="modal-dialog-custom" style="max-width:440px">
+            <div class="modal-header-custom">
+                <h5>Szybkie dodanie klienta</h5>
+                <button class="btn-close" @onclick="() => _showQuickClient = false"></button>
+            </div>
+            <EditForm Model="_quickClient" OnValidSubmit="SaveQuickClient" FormName="quick-client-membership">
+                <DataAnnotationsValidator />
+                <div class="modal-body-custom">
+                    <div class="row g-3">
+                        <div class="col-6">
+                            <label class="form-label">Imię *</label>
+                            <InputText @bind-Value="_quickClient.FirstName" class="form-control" />
+                            <ValidationMessage For="() => _quickClient.FirstName" />
+                        </div>
+                        <div class="col-6">
+                            <label class="form-label">Nazwisko *</label>
+                            <InputText @bind-Value="_quickClient.LastName" class="form-control" />
+                            <ValidationMessage For="() => _quickClient.LastName" />
+                        </div>
+                        <div class="col-6">
+                            <label class="form-label">Telefon</label>
+                            <InputText @bind-Value="_quickClient.PhoneNumber" class="form-control" />
+                        </div>
+                        <div class="col-6">
+                            <label class="form-label">E-mail</label>
+                            <InputText @bind-Value="_quickClient.Email" class="form-control" />
+                            <ValidationMessage For="() => _quickClient.Email" />
+                        </div>
+                    </div>
+                </div>
+                <div class="modal-footer-custom">
+                    <button type="submit" class="btn btn-primary" disabled="@_quickSaving">
+                        @(_quickSaving ? "Zapisywanie..." : "Dodaj klienta")
+                    </button>
+                    <button type="button" class="btn btn-secondary ms-2" @onclick="() => _showQuickClient = false">Anuluj</button>
+                </div>
+            </EditForm>
+        </div>
+    </div>
+}
+
+<!-- Modal: formularz pakietu -->
 @if (_showForm)
 {
     <div class="modal-backdrop">
@@ -75,7 +237,19 @@ else
                     </div>
                     <div class="mb-3">
                         <label class="form-label">Powiązana usługa</label>
-                        <InputText @bind-Value="_editing.ServiceName" class="form-control" placeholder="np. Liposukcja kawitacyjna" />
+                        <select class="form-select" value="@(_editing.ServiceId?.ToString() ?? "")" @onchange="OnServiceSelected">
+                            <option value="">-- dowolna usługa --</option>
+                            @foreach (var s in _services)
+                            {
+                                <option value="@s.Id">@s.Name</option>
+                            }
+                        </select>
+                        <div class="form-text">Karnet będzie ograniczony do wybranej usługi.</div>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Cena pakietu (PLN)</label>
+                        <InputNumber @bind-Value="_editing.Price" class="form-control" />
+                        <div class="form-text">Cena zakupu karnetu przez klienta.</div>
                     </div>
                     <div class="row g-3">
                         <div class="col-6">
@@ -128,11 +302,26 @@ else
 
 @code {
     private List<MembershipPackageEntity> _packages = [];
-    private bool _loading = true;
-    private bool _saving;
-    private bool _showForm;
+    private List<ServiceEntity> _services = [];
+    private List<ClientEntity> _clients = [];
+    private bool _loading = true, _saving, _showForm, _importing;
     private MembershipPackageEntity _editing = new();
     private MembershipPackageEntity? _deleteTarget;
+    private string? _importMsg;
+    private string? _sellSuccessMsg;
+
+    private bool _showSellModal;
+    private int? _sellClientId;
+    private string _sellClientName = "";
+    private int? _sellPackageId;
+    private decimal _sellVat = 23m;
+    private PaymentMethod _sellPaymentMethod = PaymentMethod.Cash;
+    private string _sellNotes = "";
+    private bool _selling;
+
+    private bool _showQuickClient;
+    private ClientEntity _quickClient = new();
+    private bool _quickSaving;
 
     protected override async Task OnInitializedAsync()
     {
@@ -140,7 +329,129 @@ else
         _loading = false;
     }
 
-    private async Task Load() => _packages = await MembershipService.GetAllPackagesAsync();
+    private async Task Load()
+    {
+        var pkgTask = MembershipService.GetAllPackagesAsync();
+        var svcTask = ServiceCrmService.GetAllAsync();
+        var cliTask = ClientService.GetAllAsync();
+        await Task.WhenAll(pkgTask, svcTask, cliTask);
+        _packages = pkgTask.Result;
+        _services = svcTask.Result;
+        _clients = cliTask.Result;
+    }
+
+    private void OnServiceSelected(ChangeEventArgs e)
+    {
+        if (int.TryParse(e.Value?.ToString(), out var id) && id > 0)
+        {
+            _editing.ServiceId = id;
+            _editing.ServiceName = _services.FirstOrDefault(s => s.Id == id)?.Name ?? string.Empty;
+        }
+        else
+        {
+            _editing.ServiceId = null;
+            _editing.ServiceName = string.Empty;
+        }
+    }
+
+    private void OnSellClientChanged(ChangeEventArgs e)
+    {
+        if (int.TryParse(e.Value?.ToString(), out var id) && id > 0)
+        {
+            _sellClientId = id;
+            var c = _clients.FirstOrDefault(x => x.Id == id);
+            _sellClientName = c != null ? $"{c.FirstName} {c.LastName}" : "";
+        }
+        else
+        {
+            _sellClientId = null;
+            _sellClientName = "";
+        }
+    }
+
+    private void OnSellPackageChanged(ChangeEventArgs e)
+    {
+        if (int.TryParse(e.Value?.ToString(), out var id) && id > 0)
+            _sellPackageId = id;
+        else
+            _sellPackageId = null;
+    }
+
+    private void CloseSellModal()
+    {
+        _showSellModal = false;
+        _sellClientId = null;
+        _sellClientName = "";
+        _sellPackageId = null;
+        _sellVat = 23m;
+        _sellPaymentMethod = PaymentMethod.Cash;
+        _sellNotes = "";
+    }
+
+    private async Task SellMembership()
+    {
+        if (!_sellClientId.HasValue || !_sellPackageId.HasValue) return;
+        _selling = true;
+        try
+        {
+            var pkg = _packages.FirstOrDefault(p => p.Id == _sellPackageId);
+            if (pkg == null) return;
+
+            await MembershipService.AssignAsync(_sellClientId.Value, _sellPackageId.Value, _sellNotes);
+
+            if (pkg.Price > 0)
+            {
+                var (userId, _) = await UserContext.ResolveAsync();
+                await SaleService.CreateAsync(new SaleEntity
+                {
+                    SaleDate = DateTime.Now,
+                    ClientId = _sellClientId,
+                    ClientName = _sellClientName,
+                    PaymentMethod = _sellPaymentMethod,
+                    Notes = _sellNotes,
+                    CreatedByUserId = userId,
+                    Items =
+                    [
+                        new SaleItemEntity
+                        {
+                            ItemType = SaleItemType.Membership,
+                            MembershipPackageId = pkg.Id,
+                            ItemName = pkg.Name,
+                            Quantity = 1,
+                            UnitPrice = pkg.Price,
+                            TaxRatePercent = _sellVat
+                        }
+                    ]
+                });
+            }
+
+            var priceInfo = pkg.Price > 0 ? $" i zarejestrowano sprzedaz {pkg.Price.ToString("F2")} PLN." : ".";
+            _sellSuccessMsg = $"Karnet '{pkg.Name}' przypisano do {_sellClientName}{priceInfo}";
+            CloseSellModal();
+        }
+        finally
+        {
+            _selling = false;
+        }
+    }
+
+    private async Task SaveQuickClient()
+    {
+        _quickSaving = true;
+        try
+        {
+            var created = await ClientService.CreateAsync(_quickClient);
+            _clients = await ClientService.GetAllAsync();
+            _sellClientId = created.Id;
+            _sellClientName = $"{created.FirstName} {created.LastName}";
+            _quickClient = new();
+            _showQuickClient = false;
+        }
+        finally
+        {
+            _quickSaving = false;
+        }
+    }
 
     private void OpenAdd()
     {
@@ -155,6 +466,8 @@ else
             Id = pkg.Id,
             Name = pkg.Name,
             ServiceName = pkg.ServiceName,
+            ServiceId = pkg.ServiceId,
+            Price = pkg.Price,
             TotalEntries = pkg.TotalEntries,
             ValidityMonths = pkg.ValidityMonths,
             IsActive = pkg.IsActive
@@ -184,5 +497,81 @@ else
             _deleteTarget = null;
             await Load();
         }
+    }
+
+    private async Task ExportCsv()
+    {
+        var sb = new System.Text.StringBuilder();
+        sb.AppendLine("Nazwa;Usluga;Cena;LiczbaWejsc;WaznoscMiesiecy;Aktywny");
+        foreach (var p in _packages)
+            sb.AppendLine(string.Join(";",
+                CsvHelper.Q(p.Name),
+                CsvHelper.Q(p.ServiceName),
+                p.Price.ToString(System.Globalization.CultureInfo.InvariantCulture),
+                p.TotalEntries,
+                p.ValidityMonths,
+                p.IsActive ? "TAK" : "NIE"));
+        var b64 = Convert.ToBase64String(CsvHelper.ToBytes(sb.ToString()));
+        await JS.InvokeVoidAsync("downloadCsv", $"karnety_{DateTime.Now:yyyyMMdd}.csv", b64);
+    }
+
+    private async Task RemoveDuplicates()
+    {
+        var dupes = _packages
+            .GroupBy(p => p.Name.ToLower())
+            .Where(g => g.Count() > 1)
+            .SelectMany(g => g.OrderBy(p => p.Id).Skip(1))
+            .ToList();
+        foreach (var d in dupes)
+            await MembershipService.DeletePackageAsync(d.Id);
+        await Load();
+        _importMsg = dupes.Count > 0 ? $"Usunięto {dupes.Count} duplikatów pakietów." : "Brak duplikatów do usunięcia.";
+    }
+
+    private async Task ImportCsv(InputFileChangeEventArgs e)
+    {
+        _importing = true;
+        _importMsg = null;
+        int imported = 0, skipped = 0;
+        try
+        {
+            var content = await CsvHelper.ReadFileAsync(e.File);
+            var existingNames = _packages.Select(x => x.Name.ToLower()).ToHashSet();
+            bool header = true;
+            foreach (var rawLine in content.Split('\n', StringSplitOptions.RemoveEmptyEntries))
+            {
+                if (header) { header = false; continue; }
+                var p = CsvHelper.SplitLine(rawLine.Trim('\r'));
+                if (p.Length < 4 || string.IsNullOrWhiteSpace(CsvHelper.Uq(p[0]))) { skipped++; continue; }
+
+                var name = CsvHelper.Uq(p[0]);
+                if (existingNames.Contains(name.ToLower())) { skipped++; continue; }
+
+                decimal.TryParse(p[2], System.Globalization.NumberStyles.Any, System.Globalization.CultureInfo.InvariantCulture, out var price);
+                int.TryParse(p[3], out var entries);
+                int.TryParse(p.Length > 4 ? p[4] : "6", out var months);
+                if (entries <= 0) entries = 6;
+                if (months <= 0) months = 6;
+                var svcName = CsvHelper.Uq(p[1]);
+                var svc = _services.FirstOrDefault(s => s.Name == svcName);
+
+                await MembershipService.CreatePackageAsync(new MembershipPackageEntity
+                {
+                    Name = name,
+                    ServiceName = svcName,
+                    ServiceId = svc?.Id,
+                    Price = price,
+                    TotalEntries = entries,
+                    ValidityMonths = months,
+                    IsActive = p.Length <= 5 || !CsvHelper.Uq(p[5]).Equals("NIE", StringComparison.OrdinalIgnoreCase)
+                });
+                existingNames.Add(name.ToLower());
+                imported++;
+            }
+            _importMsg = $"Zaimportowano {imported} pakietów" + (skipped > 0 ? $", pominięto {skipped} (duplikaty lub błędne wiersze)" : "") + ".";
+            await Load();
+        }
+        catch (Exception ex) { _importMsg = $"Błąd importu: {ex.Message}"; }
+        _importing = false;
     }
 }

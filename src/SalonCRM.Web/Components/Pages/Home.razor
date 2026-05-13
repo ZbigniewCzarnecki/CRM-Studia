@@ -5,6 +5,8 @@
 @inject IServiceCrmService ServiceCrmService
 @inject IAppointmentService AppointmentService
 @inject IVoucherService VoucherService
+@inject IMembershipService MembershipService
+@inject ISaleService SaleService
 
 <PageTitle>Dashboard — SalonCRM</PageTitle>
 
@@ -50,11 +52,46 @@
             <div class="stat-label">Zrealizowanych w miesiącu</div>
         </div>
     </PermissionView>
+    <PermissionView Permission="Permission.ViewReports">
+        <div class="stat-card stat-green">
+            <div class="stat-icon"><i class="bi bi-bag-check-fill"></i></div>
+            <div class="stat-value">@_saleGrossMonth.ToString("C0", new System.Globalization.CultureInfo("pl-PL"))</div>
+            <div class="stat-label">Sprzedaż brutto (miesiąc)</div>
+        </div>
+    </PermissionView>
+    <PermissionView Permission="Permission.ViewReports">
+        <div class="stat-card stat-green">
+            <div class="stat-icon"><i class="bi bi-cash-coin"></i></div>
+            <div class="stat-value">@_saleGrossToday.ToString("C0", new System.Globalization.CultureInfo("pl-PL"))</div>
+            <div class="stat-label">Sprzedaż brutto dziś</div>
+        </div>
+    </PermissionView>
+    <PermissionView Permission="Permission.ViewReports">
+        <div class="stat-card">
+            <div class="stat-icon"><i class="bi bi-receipt-cutoff"></i></div>
+            <div class="stat-value">@_saleNetMonth.ToString("C0", new System.Globalization.CultureInfo("pl-PL"))</div>
+            <div class="stat-label">Sprzedaż netto (miesiąc)</div>
+        </div>
+    </PermissionView>
+    <PermissionView Permission="Permission.ViewReports">
+        <div class="stat-card">
+            <div class="stat-icon"><i class="bi bi-percent"></i></div>
+            <div class="stat-value">@_saleTaxMonth.ToString("C0", new System.Globalization.CultureInfo("pl-PL"))</div>
+            <div class="stat-label">VAT ze sprzedaży (miesiąc)</div>
+        </div>
+    </PermissionView>
+    <PermissionView Permission="Permission.ViewReports">
+        <div class="stat-card">
+            <div class="stat-icon"><i class="bi bi-cart-check-fill"></i></div>
+            <div class="stat-value">@_saleCountMonth</div>
+            <div class="stat-label">Transakcji sprzedaży (miesiąc)</div>
+        </div>
+    </PermissionView>
 </div>
 
 @if (_expiringVouchers.Any())
 {
-    <div class="alert alert-warning mt-4 d-flex flex-column gap-1">
+    <div class="alert alert-salon-soft mt-4 d-flex flex-column gap-1">
         <div><i class="bi bi-clock-fill me-2"></i><strong>Vouchery wygasające w ciągu 7 dni: @_expiringVouchers.Count</strong></div>
         <ul class="mb-1">
             @foreach (var v in _expiringVouchers.Take(5))
@@ -71,10 +108,32 @@
     </div>
 }
 
-@if (_upcoming.Any())
+@if (_lowEntryMemberships.Any())
+{
+    <div class="alert alert-salon-soft mt-3 d-flex flex-column gap-1">
+        <div><i class="bi bi-card-checklist me-2"></i><strong>Karnety z ostatnim wejściem: @_lowEntryMemberships.Count</strong></div>
+        <ul class="mb-1">
+            @foreach (var m in _lowEntryMemberships)
+            {
+                <li>
+                    <a href="/clients/@m.ClientId"><strong>@m.ClientName</strong></a>
+                    — @m.PackageName,
+                    pozostało: <strong>@m.RemainingEntries</strong> @(m.RemainingEntries == 1 ? "wejście" : "wejścia"),
+                    ważny do: @m.ExpiresAt.ToString("dd.MM.yyyy")
+                </li>
+            }
+        </ul>
+        <div><a href="/karnety" class="btn btn-sm btn-info">Zarządzaj karnetami</a></div>
+    </div>
+}
+
+@if (_allUpcoming.Any())
 {
     <div class="card mt-4">
-        <div class="card-header">Najbliższe wizyty</div>
+        <div class="card-header d-flex justify-content-between align-items-center">
+            <span>Najbliższe wizyty</span>
+            <small class="text-muted">@(_upcomingPage * PageSize + 1)–@Math.Min((_upcomingPage + 1) * PageSize, _allUpcoming.Count) z @_allUpcoming.Count</small>
+        </div>
         <div class="card-body p-0">
             <table class="table table-hover mb-0">
                 <thead>
@@ -86,7 +145,7 @@
                     </tr>
                 </thead>
                 <tbody>
-                    @foreach (var a in _upcoming)
+                    @foreach (var a in PagedUpcoming)
                     {
                         <tr>
                             <td>@a.Date.ToString("dd.MM.yyyy HH:mm")</td>
@@ -98,42 +157,72 @@
                 </tbody>
             </table>
         </div>
+        @if (_allUpcoming.Count > PageSize)
+        {
+            <div class="card-footer d-flex justify-content-between align-items-center py-2">
+                <button class="btn btn-sm btn-outline-secondary" disabled="@(_upcomingPage == 0)" @onclick="() => _upcomingPage--">‹ Poprzednia</button>
+                <span class="text-muted" style="font-size:.85rem">Strona @(_upcomingPage + 1) / @TotalPages</span>
+                <button class="btn btn-sm btn-outline-secondary" disabled="@(_upcomingPage >= TotalPages - 1)" @onclick="() => _upcomingPage++">Następna ›</button>
+            </div>
+        }
     </div>
 }
 
 @code {
+    private const int PageSize = 5;
+
     private int _clientCount, _serviceCount, _upcomingCount, _completedMonth;
     private decimal _revenueToday, _revenueMonth;
-    private List<AppointmentEntity> _upcoming = [];
+    private decimal _saleGrossToday, _saleGrossMonth, _saleNetMonth, _saleTaxMonth;
+    private int _saleCountMonth;
+    private List<AppointmentEntity> _allUpcoming = [];
     private List<VoucherEntity> _expiringVouchers = [];
+    private List<LowEntryMembership> _lowEntryMemberships = [];
+    private int _upcomingPage = 0;
+
+    private List<AppointmentEntity> PagedUpcoming =>
+        _allUpcoming.Skip(_upcomingPage * PageSize).Take(PageSize).ToList();
+
+    private int TotalPages => (int)Math.Ceiling(_allUpcoming.Count / (double)PageSize);
 
     protected override async Task OnInitializedAsync()
     {
         var now = DateTime.Now;
         var todayStart = now.Date;
-        var todayEnd = todayStart.AddDays(1).AddTicks(-1);
+        var todayEnd   = todayStart.AddDays(1).AddTicks(-1);
         var monthStart = new DateTime(now.Year, now.Month, 1);
-        var monthEnd = monthStart.AddMonths(1).AddTicks(-1);
+        var monthEnd   = monthStart.AddMonths(1).AddTicks(-1);
 
-        var clientsTask = ClientService.GetAllAsync();
-        var servicesTask = ServiceCrmService.GetAllAsync();
-        var upcomingCountTask = AppointmentService.CountUpcomingAsync();
-        var revTodayTask = AppointmentService.GetRevenueAsync(todayStart, todayEnd);
-        var revMonthTask = AppointmentService.GetRevenueAsync(monthStart, monthEnd);
-        var allTask = AppointmentService.GetAllAsync();
-        var expiringTask = VoucherService.GetExpiringAsync(7);
+        var clientsTask       = ClientService.GetAllAsync();
+        var servicesTask      = ServiceCrmService.GetAllAsync();
+        var upcomingCntTask   = AppointmentService.CountUpcomingAsync();
+        var revTodayTask      = AppointmentService.GetRevenueAsync(todayStart, todayEnd);
+        var revMonthTask      = AppointmentService.GetRevenueAsync(monthStart, monthEnd);
+        var allTask           = AppointmentService.GetAllAsync();
+        var expiringTask      = VoucherService.GetExpiringAsync(7);
+        var lowEntryTask      = MembershipService.GetLowEntryMembershipsAsync(1);
+        var saleTodayTask     = SaleService.GetSummaryAsync(todayStart, todayEnd);
+        var saleMonthTask     = SaleService.GetSummaryAsync(monthStart, monthEnd);
 
-        await Task.WhenAll(clientsTask, servicesTask, upcomingCountTask, revTodayTask, revMonthTask, allTask, expiringTask);
+        await Task.WhenAll(clientsTask, servicesTask, upcomingCntTask, revTodayTask,
+                           revMonthTask, allTask, expiringTask, lowEntryTask,
+                           saleTodayTask, saleMonthTask);
 
-        _clientCount = clientsTask.Result.Count;
-        _serviceCount = servicesTask.Result.Count;
-        _upcomingCount = upcomingCountTask.Result;
-        _revenueToday = revTodayTask.Result;
-        _revenueMonth = revMonthTask.Result;
-        _expiringVouchers = expiringTask.Result;
+        _clientCount          = clientsTask.Result.Count;
+        _serviceCount         = servicesTask.Result.Count;
+        _upcomingCount        = upcomingCntTask.Result;
+        _revenueToday         = revTodayTask.Result;
+        _revenueMonth         = revMonthTask.Result;
+        _expiringVouchers     = expiringTask.Result;
+        _lowEntryMemberships  = lowEntryTask.Result;
+
+        (_saleGrossToday, _, _, _)                          = saleTodayTask.Result;
+        (_saleGrossMonth, _saleNetMonth, _saleTaxMonth, _saleCountMonth) = saleMonthTask.Result;
 
         var all = allTask.Result;
-        _upcoming = all.Where(a => a.Date >= now).OrderBy(a => a.Date).Take(5).ToList();
-        _completedMonth = all.Count(a => a.Status == AppointmentStatus.Completed && a.Date >= monthStart && a.Date <= monthEnd);
+        _allUpcoming   = all.Where(a => a.Date >= now).OrderBy(a => a.Date).ToList();
+        _completedMonth = all.Count(a =>
+            a.Status == AppointmentStatus.Completed &&
+            a.Date >= monthStart && a.Date <= monthEnd);
     }
 }
